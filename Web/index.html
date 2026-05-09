@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arcane Direction Battle - HTML5</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">じゃんけん × あっちむいてほい × 魔法属性バトル</p>
+        <h1>Arcane Direction Battle</h1>
+      </div>
+      <button id="startButton" class="primary">ゲーム開始 / リスタート</button>
+    </header>
+
+    <section class="hud" aria-label="battle status">
+      <article class="panel mage-card">
+        <div class="name-row"><strong>PLAYER 魔導師</strong><span id="playerWins">0 Wins</span></div>
+        <label>HP <meter id="playerHp" min="0" max="100" value="100"></meter></label>
+        <label>必殺カウント <meter id="playerUlt" min="0" max="3" value="0"></meter></label>
+        <small id="playerUltText">0/3 ダメージ成功</small>
+      </article>
+      <article class="panel center-card">
+        <div id="roundText">Round 1</div>
+        <div id="turnText">Turn 1</div>
+        <div id="timerText">ゲーム開始を押してください</div>
+      </article>
+      <article class="panel mage-card enemy">
+        <div class="name-row"><strong>CPU 魔導師</strong><span id="enemyWins">0 Wins</span></div>
+        <label>HP <meter id="enemyHp" min="0" max="100" value="100"></meter></label>
+        <label>必殺カウント <meter id="enemyUlt" min="0" max="3" value="0"></meter></label>
+        <small id="enemyUltText">0/3 ダメージ成功</small>
+      </article>
+    </section>
+
+    <section class="stage-wrap">
+      <canvas id="gameCanvas" width="1280" height="640" aria-label="battle arena"></canvas>
+      <div id="banner" class="banner hidden"></div>
+    </section>
+
+    <section class="controls">
+      <article class="panel choice-panel">
+        <h2>戦闘スタート: じゃんけん</h2>
+        <div class="button-grid three" id="rpsButtons">
+          <button data-rps="Rock" class="choice selected">✊ グー 1</button>
+          <button data-rps="Scissors" class="choice">✌️ チョキ 2</button>
+          <button data-rps="Paper" class="choice">✋ パー 3</button>
+        </div>
+        <p class="mini">勝ったら攻撃、負けたら防御。あいこはもう一度。</p>
+      </article>
+      <article class="panel choice-panel">
+        <h2>あっちむいてほい: 属性クリック</h2>
+        <div class="button-grid five" id="magicButtons">
+          <button data-magic="Fire" class="choice selected">火 J</button>
+          <button data-magic="Ice" class="choice">氷 K</button>
+          <button data-magic="Thunder" class="choice">雷 L</button>
+          <button data-magic="Dark" class="choice">闇 ;</button>
+          <button data-magic="Light" class="choice">光 '</button>
+        </div>
+        <p class="mini">攻撃側は攻撃属性、防御側は防御属性を選択。同じ属性ならダメージなし。</p>
+      </article>
+      <article class="panel choice-panel">
+        <h2>確定</h2>
+        <button id="confirmButton" class="choice confirm">選択を確定 Space</button>
+        <button id="ultimateButton" class="choice">必殺技 U（3回通すと解禁）</button>
+      </article>
+    </section>
+
+    <section class="lower">
+      <article class="panel log-panel">
+        <h2>バトルログ</h2>
+        <ol id="battleLog"></ol>
+      </article>
+      <article class="panel readout-panel">
+        <h2>読み合いUI</h2>
+        <p><strong>PLAYER分析:</strong> <span id="playerReadout">まだ読み合いデータなし</span></p>
+        <p><strong>CPU分析:</strong> <span id="enemyReadout">まだ読み合いデータなし</span></p>
+        <p class="help">戦闘開始でじゃんけん。勝者が攻撃、敗者が防御。あっちむいてほいの合図で属性を選び、防御属性が攻撃属性と一致したらノーダメージ。攻撃を3回通すとガード不可の必殺技が使えます。</p>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="./src/game.js"></script>
+</body>
+</html>
