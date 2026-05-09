@@ -1,0 +1,10 @@
+{
+  "name": "arcane-direction-battle-html5",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080 -d Web",
+    "test": "node Web/tests/gameCore.test.mjs && node --check Web/src/game.js && node --check Web/src/gameCore.mjs"
+  }
+}
