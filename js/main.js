@@ -19,6 +19,8 @@
   let lastCpuChoiceCandidates = [];
   let lastCpuChoicePly = -1;
   let cpuSearchToken = 0;
+  let aiWorker = null;
+  let aiWorkerRequest = null;
   let clockTimer = null;
   let finishingByClock = false;
   let audioContext = null;
@@ -413,6 +415,27 @@
       randomness: profile && profile.randomness,
       mobile: isMobileAiMode()
     };
+  }
+
+  function emergencyCpuMove(level) {
+    const legal = window.ShogiRules.legalMoves(state, state.turn);
+    if (!legal.length) return { move: null, candidates: [] };
+    const scored = legal.map(move => {
+      let score = 0;
+      if (!move.drop && move.capture) score += 1000 + window.ShogiEvaluation.pieceValue(move.capture);
+      if (move.promote) score += 180;
+      const side = state.turn;
+      const undo = window.ShogiBoard.makeMove(state, move);
+      if (window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side))) score += 450;
+      const percent = cpuSide === "b"
+        ? window.ShogiEvaluation.blackPercent(state)
+        : 100 - window.ShogiEvaluation.blackPercent(state);
+      score += percent * 2;
+      window.ShogiBoard.undoMove(state, undo);
+      score += Math.random() * Math.max(1, 12 - level);
+      return { move, score, depth: 0, nodes: legal.length, emergency: true };
+    }).sort((a, b) => b.score - a.score);
+    return { move: scored[0].move, candidates: scored.slice(0, 3) };
   }
 
   function displayToStatePos(r, c) {
@@ -933,55 +956,61 @@
   function getBuiltInBestMove(level, profile, token) {
     return new Promise(resolve => {
       if (!window.Worker) {
-        const choice = window.ShogiAI.chooseMoveWithRandomness(state, level, aiSearchOptions(profile));
-        resolve({ move: choice.bestMove, candidates: choice.candidates || [], depth: choice.depth || 0, nodes: choice.nodes || 0 });
+        const choice = emergencyCpuMove(level);
+        resolve({ move: choice.move, candidates: choice.candidates || [], depth: 0, nodes: 0, emergency: true });
         return;
       }
 
       let settled = false;
-      const worker = new Worker("js/ai-worker.js?v=76");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=77");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
-        try { worker.terminate(); } catch {}
+        aiWorkerRequest = null;
       };
-      worker.onmessage = event => {
+      const resetWorker = () => {
+        try { if (aiWorker) aiWorker.terminate(); } catch {}
+        aiWorker = null;
+        aiWorkerRequest = null;
+      };
+      aiWorkerRequest = id;
+      aiWorker.onmessage = event => {
         const payload = event.data || {};
-        if (payload.id !== id || settled) return;
+        if (payload.id !== id || settled || aiWorkerRequest !== id) return;
         settled = true;
         cleanup();
         if (!payload.ok) {
-          console.warn("AI worker fallback:", payload.error);
-          const choice = window.ShogiAI.chooseMoveWithRandomness(state, level, aiSearchOptions(profile));
-          resolve({ move: choice.bestMove, candidates: choice.candidates || [], depth: choice.depth || 0, nodes: choice.nodes || 0 });
+          console.warn("AI worker emergency move:", payload.error);
+          const choice = emergencyCpuMove(level);
+          resolve({ move: choice.move, candidates: choice.candidates || [], depth: 0, nodes: 0, emergency: true });
           return;
         }
         resolve(payload);
       };
-      worker.onerror = error => {
+      aiWorker.onerror = error => {
         if (settled) return;
         settled = true;
-        cleanup();
         console.warn("AI worker failed:", error.message || error);
-        const choice = window.ShogiAI.chooseMoveWithRandomness(state, level, aiSearchOptions(profile));
-        resolve({ move: choice.bestMove, candidates: choice.candidates || [], depth: choice.depth || 0, nodes: choice.nodes || 0 });
+        resetWorker();
+        const choice = emergencyCpuMove(level);
+        resolve({ move: choice.move, candidates: choice.candidates || [], depth: 0, nodes: 0, emergency: true });
       };
-      worker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode() });
+      aiWorker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode() });
 
       const fallbackTimeout = isMobileAiMode()
-        ? Math.max(1400, 500 + level * 180)
+        ? 650
         : Math.max(2500, 250 + level * 450);
       setTimeout(() => {
         if (settled) return;
         if (token !== cpuSearchToken) {
           settled = true;
-          cleanup();
+          resetWorker();
           resolve({ move: null, candidates: [], canceled: true });
           return;
         }
         settled = true;
-        cleanup();
-        const choice = window.ShogiAI.chooseMoveWithRandomness(state, level, aiSearchOptions(profile));
-        resolve({ move: choice.bestMove, candidates: choice.candidates || [], depth: choice.depth || 0, nodes: choice.nodes || 0 });
+        resetWorker();
+        const choice = emergencyCpuMove(level);
+        resolve({ move: choice.move, candidates: choice.candidates || [], depth: 0, nodes: 0, emergency: true });
       }, fallbackTimeout);
     });
   }
