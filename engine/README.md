@@ -18,13 +18,13 @@ Place the Suisho-style NNUE evaluation file here:
 engine/eval/nn.bin
 ```
 
-On Render, you can also set this environment variable to a direct `nn.bin` URL:
+On Render, you can also set this environment variable to a direct `nn.bin` URL or the official `Suisho5.7z` release asset:
 
 ```text
-NNUE_EVAL_URL=https://example.com/path/to/nn.bin
+NNUE_EVAL_URL=https://github.com/yaneurao/YaneuraOu/releases/download/suisho5/Suisho5.7z
 ```
 
-The server downloads it at startup if `engine/eval/nn.bin` is missing.
+The server downloads and extracts it at startup if `engine/eval/nn.bin` is missing.
 
 You can also point the server to another executable or eval directory:
 
