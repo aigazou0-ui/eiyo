@@ -18,7 +18,7 @@ make "-j$jobs" tournament \
   COMPILER=clang++ \
   YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE \
   TARGET_CPU="$target_cpu" \
-  ENGINE_NAME="YaneuraOu(Render)"
+  ENGINE_NAME="YaneuraOuRender"
 
 mkdir -p "$(dirname "$out")"
 
