@@ -939,7 +939,7 @@
       }
 
       let settled = false;
-      const worker = new Worker("js/ai-worker.js?v=75");
+      const worker = new Worker("js/ai-worker.js?v=76");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         try { worker.terminate(); } catch {}
