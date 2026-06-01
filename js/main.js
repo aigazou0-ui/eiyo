@@ -962,7 +962,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=77");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=78");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;
@@ -997,7 +997,7 @@
       aiWorker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode() });
 
       const fallbackTimeout = isMobileAiMode()
-        ? 650
+        ? (level >= 9 ? 1800 : level >= 5 ? 1100 : 550)
         : Math.max(2500, 250 + level * 450);
       setTimeout(() => {
         if (settled) return;

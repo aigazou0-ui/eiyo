@@ -29,15 +29,15 @@
     const cfg = Object.assign({}, LEVELS[lv] || LEVELS[2]);
     if (options.mobile) {
       cfg.mobile = true;
-      cfg.time = Math.min(cfg.time, lv >= 9 ? 180 : lv >= 7 ? 160 : lv >= 5 ? 130 : 90);
-      cfg.depth = Math.min(cfg.depth, lv >= 6 ? 2 : cfg.depth);
-      cfg.iterative = false;
-      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 14 : lv >= 6 ? 10 : 6);
+      cfg.time = Math.min(cfg.time, lv >= 9 ? 850 : lv >= 7 ? 480 : lv >= 5 ? 300 : 120);
+      cfg.depth = Math.min(cfg.depth, lv >= 9 ? 3 : lv >= 6 ? 2 : cfg.depth);
+      cfg.iterative = lv >= 7;
+      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 46 : lv >= 6 ? 22 : 8);
       cfg.q = false;
-      cfg.tt = false;
-      cfg.mobileRootLimit = lv >= 9 ? 10 : lv >= 7 ? 9 : 7;
-      cfg.mobileBranchLimit = lv >= 9 ? 6 : lv >= 7 ? 5 : 4;
-      cfg.mobileQLimit = 4;
+      cfg.tt = lv >= 8;
+      cfg.mobileRootLimit = lv >= 9 ? 18 : lv >= 7 ? 13 : 8;
+      cfg.mobileBranchLimit = lv >= 9 ? 10 : lv >= 7 ? 7 : 5;
+      cfg.mobileQLimit = 6;
       cfg.mobileMateDepth = lv >= 8 ? 3 : 1;
     }
     return cfg;
