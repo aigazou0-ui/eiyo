@@ -4,7 +4,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const ROOT = __dirname;
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || (process.env.RENDER ? 10000 : 4173));
 const ENGINE_PATH = process.env.YANEURAOU_PATH || path.join(ROOT, "engine", process.platform === "win32" ? "yaneuraou.exe" : "yaneuraou");
 const EVAL_DIR = process.env.YANEURAOU_EVAL_DIR || path.join(ROOT, "engine", "eval");
 const ENGINE_THREADS = Number(process.env.YANEURAOU_THREADS || 1);

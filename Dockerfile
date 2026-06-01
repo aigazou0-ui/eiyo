@@ -26,7 +26,6 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=4173
 ENV YANEURAOU_PATH=/app/engine/yaneuraou
 ENV YANEURAOU_EVAL_DIR=/app/engine/eval
 ENV YANEURAOU_THREADS=1
