@@ -24,6 +24,14 @@ const MIME = {
   ".svg": "image/svg+xml"
 };
 
+process.on("uncaughtException", error => {
+  console.error("[fatal] uncaughtException", error && error.stack ? error.stack : error);
+});
+
+process.on("unhandledRejection", error => {
+  console.error("[fatal] unhandledRejection", error && error.stack ? error.stack : error);
+});
+
 class UsiEngine {
   constructor(exePath, evalDir) {
     this.exePath = exePath;
@@ -40,21 +48,25 @@ class UsiEngine {
     if (this.ready && this.proc && !this.proc.killed) return;
     if (!fs.existsSync(this.exePath)) throw new Error(`Engine executable not found: ${this.exePath}`);
 
+    console.log(`[engine] starting: ${this.exePath}`);
     this.proc = spawn(this.exePath, [], {
       cwd: path.dirname(this.exePath),
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
     });
+    console.log(`[engine] spawned pid=${this.proc.pid || "unknown"}`);
     this.proc.stdout.setEncoding("utf8");
     this.proc.stderr.setEncoding("utf8");
     this.proc.stdout.on("data", data => this.onData(data));
     this.proc.stderr.on("data", data => console.error("[engine]", data.trim()));
     this.proc.on("error", error => {
+      console.error("[engine] spawn error", error && error.stack ? error.stack : error);
       this.ready = false;
       this.proc = null;
       this.flushPending(error);
     });
     this.proc.on("exit", (code, signal) => {
+      console.error(`[engine] exited code=${code} signal=${signal || ""}`);
       this.ready = false;
       this.proc = null;
       this.flushPending(new Error(`USI engine exited: code=${code} signal=${signal || ""}`));
@@ -62,12 +74,14 @@ class UsiEngine {
 
     this.send("usi");
     await this.waitFor(line => line === "usiok", 10000);
+    console.log("[engine] usiok");
     this.setOption("Threads", ENGINE_THREADS);
     this.setOption("Hash", ENGINE_HASH);
     this.setOption("MultiPV", ENGINE_MULTIPV);
     this.setOption("EvalDir", this.evalDir);
     this.send("isready");
     await this.waitFor(line => line === "readyok", 20000);
+    console.log("[engine] readyok");
     this.ready = true;
   }
 
@@ -142,11 +156,13 @@ class UsiEngine {
     await this.ensureStarted();
     const infoLines = [];
     const startIndex = this.lines.length;
+    console.log(`[engine] bestmove start movetime=${movetime} byoyomi=${byoyomi}`);
     this.send("usinewgame");
     this.send(`position sfen ${sfen}`);
     this.send(movetime > 0 ? `go movetime ${movetime}` : `go byoyomi ${byoyomi}`);
     const timeoutMs = Math.max(5000, byoyomi + movetime + 8000);
     const bestLine = await this.waitForFrom(startIndex, line => line.startsWith("bestmove "), timeoutMs);
+    console.log(`[engine] ${bestLine}`);
     for (const line of this.lines.slice(startIndex)) {
       if (line.startsWith("info ")) infoLines.push(line);
     }
@@ -235,6 +251,7 @@ function engineStatus() {
 
 async function handleApi(req, res) {
   const urlPath = (req.url || "").split("?")[0];
+  console.log(`[http] ${req.method} ${urlPath}`);
   if (req.method === "OPTIONS") {
     sendJson(res, 204, {});
     return;
@@ -246,6 +263,7 @@ async function handleApi(req, res) {
   if (req.method === "POST" && (urlPath === "/bestmove" || urlPath === "/api/engine/bestmove")) {
     try {
       const body = await readJson(req);
+      console.log(`[http] bestmove request level=${body.level || "normal"} purpose=${body.purpose || "cpu"} ply=${body.ply ?? ""}`);
       if (!body.sfen || typeof body.sfen !== "string") {
         sendJson(res, 400, { ok: false, error: "sfen is required" });
         return;
@@ -268,6 +286,7 @@ async function handleApi(req, res) {
         elapsedMs: Date.now() - started
       });
     } catch (error) {
+      console.error("[http] bestmove failed", error && error.stack ? error.stack : error);
       sendJson(res, 503, { ...engineStatus(), ok: false, error: error.message || String(error) });
     }
     return;
