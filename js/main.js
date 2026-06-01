@@ -1129,12 +1129,11 @@
     });
     if (els.mobileResignBtn) els.mobileResignBtn.addEventListener("click", resignGame);
     if (els.mobileTitleBtn) els.mobileTitleBtn.addEventListener("click", showTitle);
-    if (els.mobileLicenseBtn) els.mobileLicenseBtn.addEventListener("click", showLicense);
   }
 
   function init() {
     [
-      "titleScreen", "gameScreen", "reviewScreen", "licenseScreen", "titleLevelSelect", "startGameBtn", "licenseBtn", "licenseTitleBtn",
+      "titleScreen", "gameScreen", "reviewScreen", "licenseScreen", "titleLevelSelect", "startGameBtn", "licenseTitleBtn",
       "board", "blackHand", "whiteHand", "gamePopup", "kifuList", "moveCount",
       "blackPercent", "whitePercent", "meterFill", "gameLevelLabel", "resignBtn", "gameTitleBtn",
       "candidates", "thinkingBadge", "reviewBoard", "reviewBlackHand", "reviewWhiteHand",
@@ -1145,7 +1144,7 @@
       "mobileSheet", "mobileSheetTitle", "mobileSheetClose", "mobileKifuList",
       "mobileMoveCount", "mobileCandidates", "mobileThinkingBadge",
       "mobileEvalGraph", "mobileEvalText", "mobileLevelLabel",
-      "mobileSettingsTurn", "mobileResignBtn", "mobileTitleBtn", "mobileLicenseBtn", "mobileTurnLabel",
+      "mobileSettingsTurn", "mobileResignBtn", "mobileTitleBtn", "mobileTurnLabel",
       "mobilePanelKifu", "mobilePanelCandidates", "mobilePanelGraph",
       "mobilePanelSettings"
     ].forEach(id => els[id] = $(id));
@@ -1154,7 +1153,6 @@
     state.version = STATE_VERSION;
     bindAudioUnlock();
     els.startGameBtn.addEventListener("click", startGame);
-    els.licenseBtn.addEventListener("click", showLicense);
     els.licenseTitleBtn.addEventListener("click", showTitle);
     els.resignBtn.addEventListener("click", resignGame);
     els.gameTitleBtn.addEventListener("click", showTitle);
