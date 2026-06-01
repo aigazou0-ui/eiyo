@@ -18,6 +18,14 @@ Place the Suisho-style NNUE evaluation file here:
 engine/eval/nn.bin
 ```
 
+On Render, you can also set this environment variable to a direct `nn.bin` URL:
+
+```text
+NNUE_EVAL_URL=https://example.com/path/to/nn.bin
+```
+
+The server downloads it at startup if `engine/eval/nn.bin` is missing.
+
 You can also point the server to another executable or eval directory:
 
 ```powershell
@@ -26,7 +34,13 @@ $env:YANEURAOU_EVAL_DIR="C:\path\to\eval"
 npm start
 ```
 
-Render uses the same server through `render.yaml`.
+Render uses Docker through `render.yaml`. During the Docker build, `scripts/build-yaneuraou.sh` clones the official YaneuraOu repository and builds a Linux binary at:
+
+```text
+engine/yaneuraou
+```
+
+The default build target is `TARGET_CPU=SSE42` for safer Render compatibility. If Render's CPU supports AVX2 and the service is stable, it can be changed later for speed.
 
 Important endpoints:
 

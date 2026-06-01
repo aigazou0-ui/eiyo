@@ -1,22 +1,20 @@
 services:
   - type: web
     name: shogi-yaneuraou-api
-    env: node
+    env: docker
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
     envVars:
-      - key: NODE_VERSION
-        value: 20
       - key: YANEURAOU_PATH
-        value: /opt/render/project/src/engine/yaneuraou
+        value: /app/engine/yaneuraou
       - key: YANEURAOU_EVAL_DIR
-        value: /opt/render/project/src/engine/eval
+        value: /app/engine/eval
       - key: YANEURAOU_THREADS
         value: 1
       - key: YANEURAOU_HASH
         value: 128
       - key: YANEURAOU_MULTIPV
         value: 3
+      - key: NNUE_EVAL_URL
+        sync: false
       - key: ALLOW_ORIGIN
         value: "*"
