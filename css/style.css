@@ -933,20 +933,20 @@ h2 { font-size: 15px; }
 
 @media (max-width: 768px) {
   :root {
-    --cell: min(calc((100vw - 18px) / 9), 50px);
+    --cell: clamp(32px, min(calc((100vw - 18px) / 9), calc((100dvh - 232px) / 9)), 50px);
     --stand: min(calc(100vw - 18px), 450px);
   }
 
   body {
-    overflow: hidden;
+    overflow: auto;
   }
 
   .app-shell {
     min-height: 100dvh;
-    height: 100dvh;
-    padding: 6px 6px 64px;
+    height: auto;
+    padding: 6px 6px calc(72px + env(safe-area-inset-bottom));
     gap: 6px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .top-eval {
@@ -1001,7 +1001,7 @@ h2 { font-size: 15px; }
 
   .layout {
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .board-zone {
@@ -1042,10 +1042,12 @@ h2 { font-size: 15px; }
   .black-komadai {
     width: var(--stand);
     height: auto;
-    min-height: 52px;
+    min-height: 48px;
+    max-height: 92px;
     border: 1px solid #6d4b22;
     border-radius: 6px;
     padding: 0 5px 5px;
+    overflow: hidden;
   }
 
   .turn-bar {
@@ -1062,13 +1064,15 @@ h2 { font-size: 15px; }
   }
 
   .komadai-tray {
-    min-height: 40px;
+    min-height: 36px;
+    max-height: 52px;
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-start;
     align-content: center;
     gap: 4px;
     padding: 4px;
+    overflow: auto;
   }
 
   .hand-piece {

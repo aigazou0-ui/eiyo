@@ -59,21 +59,50 @@
     return moves.find(move => moveKey(move) === key) || null;
   }
 
+  const HASH_TOKEN_CACHE = new Map();
+
+  function tokenHash(token) {
+    let cached = HASH_TOKEN_CACHE.get(token);
+    if (cached !== undefined) return cached;
+    let hash = 2166136261;
+    for (let i = 0; i < token.length; i++) {
+      hash ^= token.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    cached = hash >>> 0;
+    HASH_TOKEN_CACHE.set(token, cached);
+    return cached;
+  }
+
+  function mixHash(hash, value) {
+    hash ^= value >>> 0;
+    hash = Math.imul(hash, 16777619);
+    hash ^= hash >>> 13;
+    return hash >>> 0;
+  }
+
   function stateKey(state) {
-    let key = state.turn + "|";
+    let h1 = state.turn === "b" ? 2166136261 : 2166136261 ^ 0x9e3779b9;
+    let h2 = state.turn === "b" ? 16777619 : 16777619 ^ 0x85ebca6b;
     for (let r = 0; r < 9; r++) {
       for (let c = 0; c < 9; c++) {
         const p = state.board[r][c];
-        key += p ? `${p.owner}${p.type}${p.promoted ? "+" : ""}` : ".";
-        key += ",";
+        if (!p) continue;
+        const token = tokenHash(`b:${r}:${c}:${p.owner}:${p.type}:${p.promoted ? 1 : 0}`);
+        h1 = mixHash(h1, token);
+        h2 = mixHash(h2, token ^ ((r * 9 + c + 1) * 2654435761));
       }
     }
-    key += "|";
     for (const side of ["b", "w"]) {
-      key += side;
-      for (const type of window.ShogiPieces.HAND_ORDER) key += `${type}${state.hands[side][type] || 0}`;
+      for (const type of window.ShogiPieces.HAND_ORDER) {
+        const count = state.hands[side][type] || 0;
+        if (!count) continue;
+        const token = tokenHash(`h:${side}:${type}:${count}`);
+        h1 = mixHash(h1, token);
+        h2 = mixHash(h2, token ^ (count * 2246822519));
+      }
     }
-    return key;
+    return `${h1.toString(36)}:${h2.toString(36)}`;
   }
 
   function evaluateForSide(state, side) {
@@ -109,15 +138,42 @@
   }
 
   function isOpeningPawnSacrifice(state, move, side, exchange) {
-    if (!move || move.drop || state.history.length > 34) return false;
+    if (!move || move.drop || state.history.length > 54) return false;
     const piece = state.board[move.from.r][move.from.c];
     if (!piece || piece.type !== "P") return false;
-    const keyFiles = side === "b" ? [2, 7] : [1, 6];
+    const keyFiles = side === "b" ? [1, 2, 7] : [1, 6, 7];
     const advanced = advancedRank(side, move.to);
-    if (!keyFiles.includes(move.from.c) && advanced < 4) return false;
-    if (move.capture && exchange.see < 20) return true;
-    if (!move.capture && advanced >= 4 && exchange.immediateLoss > exchange.captureGain + 20) return true;
-    return exchange.see < -50;
+    if (!keyFiles.includes(move.from.c) && advanced < 3) return false;
+    if (move.capture && exchange.see < 50) return true;
+    if (!move.capture && advanced >= 3 && exchange.immediateLoss > exchange.captureGain) return true;
+    return exchange.see < -30;
+  }
+
+  function isEarlyBishopHeadPawnPush(state, move, side) {
+    if (!move || move.drop || move.capture || state.history.length > 72) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || piece.type !== "P") return false;
+    if (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 7) return true; // △2四歩
+    if (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 1) return true; // ▲8六歩
+    return false;
+  }
+
+  function loosePawnPushRisk(state, move, side) {
+    if (!move || move.drop || move.capture || state.history.length > 70) return 0;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || piece.type !== "P") return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const enemy = state.turn;
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    window.ShogiBoard.undoMove(state, undo);
+    if (gives || !attacked) return 0;
+    let risk = defended ? 180 : 460;
+    const advanced = advancedRank(side, move.to);
+    if (advanced >= 3) risk += defended ? 120 : 260;
+    if (state.history.length < 36) risk += defended ? 80 : 220;
+    return risk;
   }
 
   function unsupportedDropRisk(state, move, side) {
@@ -325,8 +381,12 @@
       if (piece && (piece.type === "R" || piece.type === "B")) risk += Math.abs(exchange.see) * 0.7;
     }
     if (isOpeningPawnSacrifice(state, move, side, exchange)) {
-      risk += 360 + level * 45;
+      risk += 680 + level * 75;
     }
+    if (isEarlyBishopHeadPawnPush(state, move, side)) {
+      risk += 9000 + level * 420;
+    }
+    risk += loosePawnPushRisk(state, move, side) * (1.25 + level * 0.1);
     if (isCheckMove && !exchange.mateThreat && exchange.see < -40) {
       risk += 420 + Math.abs(exchange.see) * (1.1 + level * 0.08);
     }
@@ -526,6 +586,8 @@
         if (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 6) score += 520;
         if (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 7) score += 260;
         if (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 1) score += 260;
+        if (isEarlyBishopHeadPawnPush(state, move, side)) score -= 12000;
+        score -= loosePawnPushRisk(state, move, side) * 2.4;
       }
 
       if (p.type === "S" && advancedAfter > advancedBefore) score += 190;
@@ -552,9 +614,21 @@
     const key = moveKey(move);
     let score = 0;
     if (hashMove && key === hashMove) score += 1000000;
-    if (move.capture) score += 700000 + mvvLva(state, move);
+    let exchange = null;
+    if (move.capture) {
+      exchange = exchangeAfterMove(state, move, state.turn);
+      score += 700000 + mvvLva(state, move);
+      score += Math.max(-260000, Math.min(260000, exchange.see * 180));
+      if (exchange.see < -160) score -= 260000;
+    }
     if (move.promote) score += 110000;
-    if (givesCheck(state, move, state.turn)) score += 90000;
+    if (givesCheck(state, move, state.turn)) {
+      exchange = exchange || exchangeAfterMove(state, move, state.turn);
+      if (exchange.mateThreat) score += 170000;
+      else if (move.capture || exchange.see >= -40) score += 52000;
+      else score += 9000;
+      if (exchange.see < -120 && !exchange.mateThreat) score -= 70000;
+    }
     if (killerMoves[ply] && killerMoves[ply].includes(key)) score += 40000;
     score += historyTable.get(key) || 0;
     score += strategicMoveBonus(state, move);

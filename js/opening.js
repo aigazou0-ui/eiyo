@@ -165,6 +165,10 @@
     return `${sq(move.from)}${sq(move.to)}${move.promote ? "+" : ""}`;
   }
 
+  function isBishopHeadPawnPushUsi(usi) {
+    return usi === "2c2d" || usi === "8g8f";
+  }
+
   function normalizeStyle(style) {
     return STYLE_ALIASES[style] || style || "balanced";
   }
@@ -179,6 +183,7 @@
 
   function isRiskyBookMove(state, move) {
     if (!move || move.drop || !move.from) return false;
+    if (isBishopHeadPawnPushUsi(moveToUsi(move)) && state.history.length < 72) return true;
     const piece = state.board[move.from.r][move.from.c];
     if (!piece) return false;
     const ply = state.history.length;
@@ -260,6 +265,7 @@
     const side = state.turn;
     const usi = moveToUsi(move);
     const ply = state.history.length;
+    if (isBishopHeadPawnPushUsi(usi) && ply < 72) return 0;
     let best = 0;
     for (const tag of styleTags(style)) {
       const list = POLICY_MOVES[tag] && POLICY_MOVES[tag][side];

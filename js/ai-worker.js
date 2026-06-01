@@ -1,12 +1,12 @@
 ﻿self.window = self;
 
 importScripts(
-  "pieces.js?v=71",
-  "board.js?v=71",
-  "rules.js?v=71",
-  "evaluation.js?v=71",
-  "opening.js?v=71",
-  "ai.js?v=71"
+  "pieces.js?v=75",
+  "board.js?v=75",
+  "rules.js?v=75",
+  "evaluation.js?v=75",
+  "opening.js?v=75",
+  "ai.js?v=75"
 );
 
 self.onmessage = event => {
@@ -39,4 +39,5 @@ self.onmessage = event => {
     });
   }
 };
+
 

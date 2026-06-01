@@ -1,10 +1,10 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pocket将棋</title>
-  <link rel="stylesheet" href="css/style.css?v=71">
+  <link rel="stylesheet" href="css/style.css?v=76">
 </head>
 <body>
   <section id="titleScreen" class="title-screen">
@@ -13,9 +13,9 @@
       <h1>pocket将棋</h1>
       <label class="title-level">CPUの強さ
         <select id="titleLevelSelect">
-          <option value="1">Lv.1</option>
-          <option value="2" selected>Lv.2</option>
-          <option value="3">Lv.3</option>
+          <option value="1">弱い</option>
+          <option value="2" selected>普通</option>
+          <option value="3">強い</option>
         </select>
       </label>
       <button id="startGameBtn" class="primary-action">対局開始</button>
@@ -36,7 +36,7 @@
       </div>
       <div class="toolbar">
         <span id="mobileTurnLabel" class="mobile-turn-label">先手番</span>
-        <span id="gameLevelLabel" class="level-badge">CPU Lv.2</span>
+        <span id="gameLevelLabel" class="level-badge">CPU 普通</span>
         <button id="resignBtn">投了</button>
         <button id="gameTitleBtn" class="hidden">タイトルへ</button>
       </div>
@@ -111,7 +111,7 @@
         <div id="mobilePanelSettings" class="mobile-panel-body hidden">
           <div class="settings-grid">
             <span>CPU</span>
-            <strong id="mobileLevelLabel">Lv.2</strong>
+            <strong id="mobileLevelLabel">普通</strong>
             <span>手番</span>
             <strong id="mobileSettingsTurn">先手番</strong>
             <button type="button" id="mobileLicenseBtn">ライセンス</button>
@@ -217,18 +217,17 @@
     </main>
   </div>
 
-  <script src="js/pieces.js?v=71"></script>
-  <script src="js/board.js?v=71"></script>
-  <script src="js/rules.js?v=71"></script>
-  <script src="js/evaluation.js?v=71"></script>
-  <script src="js/opening.js?v=71"></script>
-  <script src="js/ai.js?v=71"></script>
-  <script src="js/usi.js?v=71"></script>
-  <script src="js/sfen.js?v=71"></script>
-  <script src="js/kifu.js?v=71"></script>
-  <script src="js/graph.js?v=71"></script>
-  <script src="js/ai-test.js?v=71"></script>
-  <script src="js/main.js?v=71"></script>
+  <script src="js/pieces.js?v=75"></script>
+  <script src="js/board.js?v=75"></script>
+  <script src="js/rules.js?v=75"></script>
+  <script src="js/evaluation.js?v=75"></script>
+  <script src="js/opening.js?v=75"></script>
+  <script src="js/ai.js?v=75"></script>
+  <script src="js/usi.js?v=75"></script>
+  <script src="js/sfen.js?v=75"></script>
+  <script src="js/kifu.js?v=75"></script>
+  <script src="js/graph.js?v=75"></script>
+  <script src="js/ai-test.js?v=75"></script>
+  <script src="js/main.js?v=75"></script>
 </body>
 </html>
-

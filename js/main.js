@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const els = {};
   const STATE_VERSION = 27;
   const INITIAL_CLOCK_SECONDS = 600;
@@ -8,6 +8,7 @@
   let selected = null;
   let selectedDrop = null;
   let legalTargets = [];
+  let legalPreviewEnabled = true;
   let cpuThinking = false;
   let reviewPly = 0;
   let reviewHistory = [];
@@ -231,6 +232,67 @@
     legalTargets = [];
   }
 
+  function hasOwnPawnInFileFast(boardState, side, file) {
+    for (let r = 0; r < 9; r++) {
+      const piece = boardState.board[r][file];
+      if (piece && piece.owner === side && piece.type === "P" && !piece.promoted) return true;
+    }
+    return false;
+  }
+
+  function fastDropsFor(boardState, side, type) {
+    const moves = [];
+    if (!boardState.hands?.[side]?.[type]) return moves;
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      if (boardState.board[r][c]) continue;
+      if ((type === "P" || type === "L") && (side === "b" ? r === 0 : r === 8)) continue;
+      if (type === "N" && (side === "b" ? r <= 1 : r >= 7)) continue;
+      if (type === "P" && hasOwnPawnInFileFast(boardState, side, c)) continue;
+      moves.push({ drop: true, piece: type, to: { r, c }, fastOnly: true });
+    }
+    return moves;
+  }
+
+  function fastMovesFrom(boardState, r, c) {
+    return window.ShogiRules
+      .pseudoPieceMoves(boardState, r, c)
+      .map(move => Object.assign({}, move, { fastOnly: true }));
+  }
+
+  function legalPreviewBudgetMs() {
+    return window.matchMedia && window.matchMedia("(max-width: 768px)").matches ? 45 : 80;
+  }
+
+  function legalPreview(compute) {
+    if (!legalPreviewEnabled) return [];
+    const started = performance.now();
+    const moves = compute();
+    if (performance.now() - started > legalPreviewBudgetMs()) {
+      legalPreviewEnabled = false;
+      return [];
+    }
+    return moves;
+  }
+
+  function previewDropsFor(boardState, side, type) {
+    return legalPreview(() => window.ShogiRules.legalDropsFor(boardState, type));
+  }
+
+  function previewMovesFrom(boardState, r, c) {
+    return legalPreview(() => window.ShogiRules.legalMovesFrom(boardState, r, c));
+  }
+
+  function strictCandidatesForTarget(move) {
+    const source = move.drop
+      ? window.ShogiRules.legalDropsFor(state, move.piece)
+      : window.ShogiRules.legalMovesFrom(state, move.from.r, move.from.c);
+    return source.filter(candidate => {
+      if (candidate.to.r !== move.to.r || candidate.to.c !== move.to.c) return false;
+      if (candidate.drop || move.drop) return candidate.drop === move.drop && candidate.piece === move.piece;
+      return true;
+    });
+  }
+
   function sideName(side) {
     const base = side === "b" ? "先手" : "後手";
     return side === playerSide ? `${base} あなた` : `${base} CPU`;
@@ -250,6 +312,40 @@
     return playerSide === "b" ? values : values.map(value => 100 - value);
   }
 
+  function sideWinPercent(side, displayState = state) {
+    const black = window.ShogiEvaluation.blackPercent(displayState);
+    return side === "b" ? black : 100 - black;
+  }
+
+  function shouldCpuResign(displayState = state) {
+    if (!displayState || displayState.gameOver || displayState.turn !== cpuSide) return false;
+    if (displayState.history.length < 40) {
+      displayState.cpuResignStreak = 0;
+      return false;
+    }
+    const cpuPercent = sideWinPercent(cpuSide, displayState);
+    if (cpuPercent > 1) {
+      displayState.cpuResignStreak = 0;
+      return false;
+    }
+    const score = window.ShogiEvaluation.scoreState(displayState) * (cpuSide === "b" ? 1 : -1);
+    if (score > -4200) {
+      displayState.cpuResignStreak = 0;
+      return false;
+    }
+    const legal = window.ShogiRules.legalMoves(displayState, cpuSide);
+    if (!legal.length) {
+      displayState.cpuResignStreak = 0;
+      return false;
+    }
+    if (window.ShogiRules.inCheck(displayState, cpuSide) && legal.length <= 2) {
+      displayState.cpuResignStreak = 0;
+      return false;
+    }
+    displayState.cpuResignStreak = (displayState.cpuResignStreak || 0) + 1;
+    return displayState.cpuResignStreak >= 2;
+  }
+
   function playerEvalLabel(percent) {
     const diff = Math.abs(percent - 50);
     if (diff < 6) return "互角";
@@ -257,6 +353,10 @@
     if (diff < 16) return side + "やや良し";
     if (diff < 30) return side + "優勢";
     return side + "勝勢";
+  }
+
+  function levelName() {
+    return { 1: "弱い", 2: "普通", 3: "強い" }[getDisplayLevel()] || "普通";
   }
 
   function getDisplayLevel() {
@@ -269,7 +369,7 @@
   }
 
   function levelLabel() {
-    return `CPU Lv.${getDisplayLevel()}`;
+    return `CPU ${levelName()}`;
   }
 
   function weightedPick(items) {
@@ -481,7 +581,7 @@
       if (typeof currentPly === "number" && i === currentPly - 1) li.classList.add("kifu-current");
       listEl.appendChild(li);
     });
-    countEl.textContent = `${history.length}手`;
+    countEl.textContent = `${history.length}?`;
     listEl.scrollTop = typeof currentPly === "number" ? Math.max(0, currentPly - 3) * 28 : listEl.scrollHeight;
   }
 
@@ -607,7 +707,7 @@
     if (els.mobileTurnLabel) els.mobileTurnLabel.textContent = text;
     if (els.mobileThinkingBadge) els.mobileThinkingBadge.textContent = cpuThinking ? "CPU思考中" : "待機中";
     if (els.mobileSettingsTurn) els.mobileSettingsTurn.textContent = text;
-    if (els.mobileLevelLabel) els.mobileLevelLabel.textContent = `Lv.${getDisplayLevel()}`;
+    if (els.mobileLevelLabel) els.mobileLevelLabel.textContent = levelName();
     if (els.mobileTitleBtn) els.mobileTitleBtn.classList.toggle("hidden", !state.gameOver);
   }
 
@@ -645,7 +745,7 @@
     if (state.turn !== playerSide || state.gameOver || cpuThinking) return;
     selected = null;
     selectedDrop = type;
-    legalTargets = window.ShogiRules.legalDropsFor(state, type);
+    legalTargets = previewDropsFor(state, playerSide, type);
     render();
   }
 
@@ -669,18 +769,18 @@
     if (p && p.owner === playerSide) {
       selected = { r, c };
       selectedDrop = null;
-      legalTargets = window.ShogiRules.legalMovesFrom(state, r, c);
+      legalTargets = previewMovesFrom(state, r, c);
     } else {
       clearSelection();
     }
     render();
   }
 
-  async function choosePromotion(move) {
+  async function choosePromotion(move, strictCandidates) {
     if (move.drop || !move.from) return move;
     const p = state.board[move.from.r][move.from.c];
     if (!window.ShogiPieces.canPromote(p, move.from.r, move.to.r) || move.promote) return move;
-    const sameDest = legalTargets.filter(m => !m.drop && m.to.r === move.to.r && m.to.c === move.to.c);
+    const sameDest = strictCandidates.filter(m => !m.drop && m.to.r === move.to.r && m.to.c === move.to.c);
     if (sameDest.length > 1) {
       const promote = await askModal({
         title: "成りますか？",
@@ -698,7 +798,21 @@
   async function commitPlayerMove(move) {
     lastCpuChoiceCandidates = [];
     lastCpuChoicePly = -1;
-    const chosen = await choosePromotion(move);
+    if (move.drop && move.piece === "P" && window.ShogiRules.isPawnDropMate(state, playerSide, move)) {
+      await finishGame(`打ち歩詰めは反則です。${sideName(playerSide)}の負けです。`);
+      return;
+    }
+
+    const strictCandidates = strictCandidatesForTarget(move);
+    if (!strictCandidates.length) {
+      clearSelection();
+      state.message = "その手は指せません。";
+      render();
+      return;
+    }
+
+    const strictMove = strictCandidates.find(candidate => !!candidate.promote === !!move.promote) || strictCandidates[0];
+    const chosen = await choosePromotion(strictMove, strictCandidates);
     updateActiveClock();
     if (state.clocks && state.clocks[playerSide] <= 0) {
       await finishGame(`${sideName(playerSide)}の時間が切れました。${sideName(cpuSide)}の勝ちです。`);
@@ -777,6 +891,10 @@
         const displayList = list.slice(0, 3);
         displayList.baseState = window.ShogiBoard.cloneState(state);
         renderCandidates(displayList);
+        if (shouldCpuResign(state)) {
+          await finishGame(`${sideName(cpuSide)}が投了しました。${sideName(playerSide)}の勝ちです。`);
+          return;
+        }
         if (!move) {
           await finishGame("CPUに合法手がありません。あなたの勝ちです。");
         } else {
@@ -813,7 +931,7 @@
       }
 
       let settled = false;
-      const worker = new Worker("js/ai-worker.js?v=71");
+      const worker = new Worker("js/ai-worker.js?v=75");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         try { worker.terminate(); } catch {}
@@ -894,7 +1012,7 @@
     renderKomadai(playerSide, els.reviewBlackHand, replay, false);
     renderKomadai(cpuSide, els.reviewWhiteHand, replay, false);
     renderKifuTo(els.reviewKifuList, els.reviewMoveCount, reviewHistory, reviewPly);
-    els.reviewPlyLabel.textContent = `${reviewPly} / ${reviewHistory.length}手`;
+    els.reviewPlyLabel.textContent = `${reviewPly} / ${reviewHistory.length}?`;
     const percent = playerPercentFromBlack(replay.evalHistory[replay.evalHistory.length - 1] || 50);
     els.reviewEvalText.textContent = playerEvalLabel(percent);
     window.ShogiGraph.draw(els.reviewEvalGraph, playerEvalValues(replay.evalHistory));
@@ -938,8 +1056,9 @@
     cpuSearchToken++;
     playerSide = Math.random() < 0.5 ? "b" : "w";
     cpuSide = window.ShogiBoard.opponent(playerSide);
+    legalPreviewEnabled = true;
     els.gameLevelLabel.textContent = levelLabel();
-    if (els.mobileLevelLabel) els.mobileLevelLabel.textContent = `Lv.${getDisplayLevel()}`;
+    if (els.mobileLevelLabel) els.mobileLevelLabel.textContent = levelName();
     state = window.ShogiBoard.newState();
     state.version = STATE_VERSION;
     state.clocks = { b: INITIAL_CLOCK_SECONDS, w: INITIAL_CLOCK_SECONDS, lastAt: Date.now() };
