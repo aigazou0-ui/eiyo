@@ -49,10 +49,15 @@ class UsiEngine {
     this.proc.stderr.setEncoding("utf8");
     this.proc.stdout.on("data", data => this.onData(data));
     this.proc.stderr.on("data", data => console.error("[engine]", data.trim()));
-    this.proc.on("exit", () => {
+    this.proc.on("error", error => {
       this.ready = false;
       this.proc = null;
-      this.flushPending(new Error("USI engine exited"));
+      this.flushPending(error);
+    });
+    this.proc.on("exit", (code, signal) => {
+      this.ready = false;
+      this.proc = null;
+      this.flushPending(new Error(`USI engine exited: code=${code} signal=${signal || ""}`));
     });
 
     this.send("usi");

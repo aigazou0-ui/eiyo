@@ -22,12 +22,18 @@ make "-j$jobs" tournament \
 
 mkdir -p "$(dirname "$out")"
 
-candidate="$(find . -maxdepth 1 -type f -perm -111 | head -n 1)"
+candidate=""
+if [ -x "./YaneuraOuRender" ]; then
+  candidate="./YaneuraOuRender"
+else
+  candidate="$(find . ../exe -maxdepth 1 -type f -perm -111 2>/dev/null | grep -E 'YaneuraOu|YaneuraOuRender|yaneuraou' | head -n 1 || true)"
+fi
 if [ -z "$candidate" ]; then
-  echo "YaneuraOu build finished, but no executable was found in source/." >&2
+  echo "YaneuraOu build finished, but no engine executable was found." >&2
+  find . ../exe -maxdepth 1 -type f -perm -111 2>/dev/null || true
   exit 1
 fi
 
 cp "$candidate" "$out"
 chmod +x "$out"
-"$out" compiler || true
+"$out" compiler
