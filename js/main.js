@@ -581,7 +581,7 @@
       if (typeof currentPly === "number" && i === currentPly - 1) li.classList.add("kifu-current");
       listEl.appendChild(li);
     });
-    countEl.textContent = `${history.length}?`;
+    countEl.textContent = `${history.length}手`;
     listEl.scrollTop = typeof currentPly === "number" ? Math.max(0, currentPly - 3) * 28 : listEl.scrollHeight;
   }
 
@@ -597,7 +597,7 @@
 
   function getCpuCandidates(level) {
     if (state.gameOver) return [];
-    if (cpuThinking) return cachedCandidates;
+    if (cpuThinking || state.turn === cpuSide) return cachedCandidates;
     if (state.turn === playerSide && lastCpuChoicePly === state.history.length && lastCpuChoiceCandidates.length) {
       return lastCpuChoiceCandidates;
     }
@@ -608,7 +608,7 @@
     const cpuState = window.ShogiBoard.cloneState(state);
     cpuState.turn = cpuSide;
     cpuState.aiProfile = Object.assign({}, state.aiProfile, { [cpuSide]: profile });
-    const previewLevel = state.turn === cpuSide ? level : Math.min(level, 4);
+    const previewLevel = Math.min(level, 3);
     cachedCandidates = window.ShogiAI.candidates(cpuState, previewLevel, { mobile, preview: true }).slice(0, 3);
     cachedCandidateKey = key;
     return cachedCandidates;
@@ -637,6 +637,7 @@
 
   function candidateEmptyText() {
     if (state.gameOver) return "対局終了";
+    if (cpuThinking || state.turn === cpuSide) return "CPU思考中";
     if (state.turn === playerSide) return "CPU待機中";
     if (window.ShogiRules.legalMoves(state, cpuSide).length === 0) return "合法手なし";
     return "候補生成中";
@@ -718,7 +719,7 @@
       els.gamePopup.classList.toggle("hidden", !state.gameOver);
     }
     if (els.gameTitleBtn) els.gameTitleBtn.classList.toggle("hidden", !state.gameOver);
-    els.thinkingBadge.textContent = cpuThinking ? "読んでいます" : "待機中";
+    els.thinkingBadge.textContent = cpuThinking ? "\u8aad\u3093\u3067\u3044\u307e\u3059" : "\u5f85\u6a5f\u4e2d";
 
     const steps = [
       () => renderBoardInto(els.board, state, true),
@@ -824,8 +825,15 @@
     resetClockAnchor();
     playSound(soundKindForMove(before, enriched, state));
     await afterMove();
+    if (!state.gameOver && state.turn === cpuSide) {
+      cpuThinking = true;
+      cachedCandidates = [];
+      cachedCandidateKey = "";
+      render();
+      setTimeout(cpuMove, 40);
+      return;
+    }
     render();
-    if (!state.gameOver && state.turn === cpuSide) setTimeout(cpuMove, 350);
   }
 
   async function finishGame(message) {
@@ -919,7 +927,7 @@
         cpuThinking = false;
         render();
       }
-    }, 500);
+    }, 20);
   }
 
   function getBuiltInBestMove(level, profile, token) {
@@ -1067,7 +1075,7 @@
     clearSelection();
     showGame();
     render();
-    if (state.turn === cpuSide) setTimeout(cpuMove, 450);
+    if (state.turn === cpuSide) setTimeout(cpuMove, 120);
   }
 
   function resumeFromReview() {
@@ -1082,7 +1090,7 @@
     clearSelection();
     showGame();
     render();
-    if (state.turn === cpuSide) setTimeout(cpuMove, 450);
+    if (state.turn === cpuSide) setTimeout(cpuMove, 120);
   }
 
   function bindReviewControls() {
