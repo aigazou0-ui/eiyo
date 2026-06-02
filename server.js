@@ -298,7 +298,8 @@ async function handleApi(req, res) {
         return;
       }
       const level = body.level === "strong" ? "strong" : "normal";
-      const defaultMovetime = level === "strong" ? 1500 : 500;
+      const purpose = body.purpose || "cpu";
+      const defaultMovetime = purpose === "kishin" ? 1500 : level === "strong" ? 1000 : 500;
       const started = Date.now();
       const result = await engine.bestmove({
         sfen: body.sfen,
@@ -309,7 +310,7 @@ async function handleApi(req, res) {
         ...result,
         level,
         requestId: body.requestId || null,
-        purpose: body.purpose || "cpu",
+        purpose,
         side: body.side || null,
         ply: Number.isFinite(Number(body.ply)) ? Number(body.ply) : null,
         elapsedMs: Date.now() - started

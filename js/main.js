@@ -641,7 +641,7 @@
   async function getEngineBestMove(level) {
     if (aiMode !== "yaneuraou") return null;
     const engineLevel = level >= 8 ? "strong" : "normal";
-    const movetime = engineLevel === "strong" ? 1500 : 500;
+    const movetime = engineLevel === "strong" ? 1000 : 500;
     const response = await fetch(`${ENGINE_API_BASE}/bestmove`, {
       method: "POST",
       headers: { "content-type": "application/json" },
