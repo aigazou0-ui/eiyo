@@ -12,7 +12,8 @@
   let cpuThinking = false;
   let reviewPly = 0;
   let reviewHistory = [];
-  const aiMode = "builtin";
+  const aiMode = "yaneuraou";
+  const ENGINE_API_BASE = "https://shogi-yaneuraou-api.onrender.com";
   let cpuProfile = null;
   let cachedCandidates = [];
   let cachedCandidateKey = "";
@@ -639,13 +640,19 @@
 
   async function getEngineBestMove(level) {
     if (aiMode !== "yaneuraou") return null;
-    const response = await fetch("/api/engine/bestmove", {
+    const engineLevel = level >= 8 ? "strong" : "normal";
+    const movetime = engineLevel === "strong" ? 1500 : 500;
+    const response = await fetch(`${ENGINE_API_BASE}/bestmove`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         sfen: window.ShogiUsi.stateToSfen(state),
+        level: engineLevel,
+        purpose: "cpu",
+        side: cpuSide,
+        ply: state.history.length + 1,
         byoyomi: 1000,
-        movetime: 0
+        movetime
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -909,6 +916,18 @@
         let list = [];
         let move = null;
         if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
+        if (level >= 5) {
+          try {
+            const engineResult = await getEngineBestMove(level);
+            if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
+            if (engineResult && engineResult.move) {
+              list = engineResult.candidates || [];
+              move = engineResult.move;
+            }
+          } catch (error) {
+            console.warn("Render engine fallback:", error);
+          }
+        }
         if (!move) {
           const builtInResult = await getBuiltInBestMove(level, profile, token);
           if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
