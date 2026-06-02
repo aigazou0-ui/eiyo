@@ -665,6 +665,29 @@
     return { move, candidates };
   }
 
+  function riskyRenderMove(move) {
+    if (!move || move.drop || !move.from) return false;
+    const ply = state.history.length;
+    const usi = window.ShogiUsi.moveToUsi(move);
+    if ((usi === "2c2d" || usi === "8g8f") && ply < 72) return true;
+    const piece = state.board[move.from.r] && state.board[move.from.r][move.from.c];
+    if (!piece) return false;
+    const advanced = piece.owner === "b" ? 8 - move.to.r : move.to.r;
+    if ((piece.type === "R" || piece.type === "B") && advanced >= 5 && ply < 42 && !move.capture) return true;
+    if (piece.type !== "P" && piece.type !== "K" && advanced >= 6 && ply < 28 && !move.capture) return true;
+    return false;
+  }
+
+  function getOpeningBestMove(level, profile) {
+    if (!window.ShogiOpening || state.history.length > 56) return null;
+    const legal = window.ShogiRules.legalMoves(state, state.turn);
+    const candidates = window.ShogiOpening.candidates(state, legal, { style: profile && profile.openingStyle })
+      .slice(0, 3)
+      .map(item => Object.assign({ depth: 1, nodes: legal.length }, item));
+    if (!candidates.length) return null;
+    return { move: candidates[0].move, candidates };
+  }
+
   function candidateEmptyText() {
     if (state.gameOver) return "対局終了";
     if (cpuThinking || state.turn === cpuSide) return "CPU思考中";
@@ -917,10 +940,17 @@
         let move = null;
         if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
         if (level >= 5) {
+          const openingResult = getOpeningBestMove(level, profile);
+          if (openingResult && openingResult.move) {
+            list = openingResult.candidates || [];
+            move = openingResult.move;
+          }
+        }
+        if (!move && level >= 5) {
           try {
             const engineResult = await getEngineBestMove(level);
             if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
-            if (engineResult && engineResult.move) {
+            if (engineResult && engineResult.move && !riskyRenderMove(engineResult.move)) {
               list = engineResult.candidates || [];
               move = engineResult.move;
             }
