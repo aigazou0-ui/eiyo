@@ -260,6 +260,25 @@ async function handleApi(req, res) {
     sendJson(res, 200, engineStatus());
     return;
   }
+  if (req.method === "GET" && urlPath === "/test-bestmove") {
+    try {
+      const started = Date.now();
+      const result = await engine.bestmove({
+        sfen: "lnsgkgsnl/1r5b1/p1ppppppp/9/9/9/P1PPPPPPP/1B5R1/LNSGKGSNL b - 1",
+        byoyomi: 1000,
+        movetime: 500
+      });
+      sendJson(res, 200, {
+        ...result,
+        test: true,
+        elapsedMs: Date.now() - started
+      });
+    } catch (error) {
+      console.error("[http] test-bestmove failed", error && error.stack ? error.stack : error);
+      sendJson(res, 503, { ...engineStatus(), ok: false, test: true, error: error.message || String(error) });
+    }
+    return;
+  }
   if (req.method === "POST" && (urlPath === "/bestmove" || urlPath === "/api/engine/bestmove")) {
     try {
       const body = await readJson(req);
@@ -316,7 +335,7 @@ function serveStatic(req, res) {
 
 const server = http.createServer((req, res) => {
   const urlPath = (req.url || "").split("?")[0];
-  if (req.method === "OPTIONS" || urlPath === "/health" || urlPath === "/bestmove" || urlPath.startsWith("/api/")) {
+  if (req.method === "OPTIONS" || urlPath === "/health" || urlPath === "/test-bestmove" || urlPath === "/bestmove" || urlPath.startsWith("/api/")) {
     handleApi(req, res);
   } else {
     serveStatic(req, res);
