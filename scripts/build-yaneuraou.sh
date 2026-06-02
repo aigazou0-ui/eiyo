@@ -6,7 +6,7 @@ ref="${YANEURAOU_REF:-master}"
 target_cpu="${YANEURAOU_TARGET_CPU:-SSE42}"
 jobs="${YANEURAOU_BUILD_JOBS:-2}"
 edition="${YANEURAOU_EDITION:-YANEURAOU_ENGINE_MATERIAL}"
-material_level="${YANEURAOU_MATERIAL_LEVEL:-9}"
+material_level="${YANEURAOU_MATERIAL_LEVEL:-1}"
 
 workdir="/tmp/yaneuraou-build"
 out="/app/engine/yaneuraou"

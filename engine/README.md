@@ -16,7 +16,7 @@ For the free Render instance, the default build uses material evaluation:
 
 ```text
 YANEURAOU_EDITION=YANEURAOU_ENGINE_MATERIAL
-YANEURAOU_MATERIAL_LEVEL=9
+YANEURAOU_MATERIAL_LEVEL=1
 ```
 
 This mode does not require an external evaluation file and is intended to stay under Render's free 512 MB memory limit. Opening play is strengthened in the browser-side book/policy layer before deeper material search takes over.
