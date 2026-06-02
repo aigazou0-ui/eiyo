@@ -8,8 +8,8 @@ const PORT = Number(process.env.PORT || (process.env.RENDER ? 10000 : 4173));
 const ENGINE_PATH = process.env.YANEURAOU_PATH || path.join(ROOT, "engine", process.platform === "win32" ? "yaneuraou.exe" : "yaneuraou");
 const EVAL_DIR = process.env.YANEURAOU_EVAL_DIR || path.join(ROOT, "engine", "eval");
 const ENGINE_THREADS = Number(process.env.YANEURAOU_THREADS || 1);
-const ENGINE_HASH = Number(process.env.YANEURAOU_HASH || 128);
-const ENGINE_MULTIPV = Number(process.env.YANEURAOU_MULTIPV || 3);
+const ENGINE_HASH = Number(process.env.YANEURAOU_HASH || 16);
+const ENGINE_MULTIPV = Number(process.env.YANEURAOU_MULTIPV || 1);
 const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "*";
 
 const MIME = {
@@ -269,7 +269,7 @@ async function handleApi(req, res) {
         return;
       }
       const level = body.level === "strong" ? "strong" : "normal";
-      const defaultMovetime = level === "strong" ? 2500 : 800;
+      const defaultMovetime = level === "strong" ? 1500 : 500;
       const started = Date.now();
       const result = await engine.bestmove({
         sfen: body.sfen,

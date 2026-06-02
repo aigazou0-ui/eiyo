@@ -11,9 +11,9 @@ services:
       - key: YANEURAOU_THREADS
         value: 1
       - key: YANEURAOU_HASH
-        value: 128
+        value: 16
       - key: YANEURAOU_MULTIPV
-        value: 3
+        value: 1
       - key: NNUE_EVAL_URL
         sync: false
       - key: ALLOW_ORIGIN
