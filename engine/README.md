@@ -16,10 +16,11 @@ For the free Render instance, the default build uses material evaluation:
 
 ```text
 YANEURAOU_EDITION=YANEURAOU_ENGINE_MATERIAL
+YANEURAOU_TARGET_CPU=OTHER
 YANEURAOU_MATERIAL_LEVEL=1
 ```
 
-This mode does not require an external evaluation file and is intended to stay under Render's free 512 MB memory limit. Opening play is strengthened in the browser-side book/policy layer before deeper material search takes over.
+This mode does not require an external evaluation file and is intended to stay under Render's free 512 MB memory limit. `TARGET_CPU=OTHER` avoids SSE-specific builds for Render compatibility. Opening play is strengthened in the browser-side book/policy layer before deeper material search takes over.
 
 If you switch back to NNUE later, place the NNUE evaluation file manually at:
 
@@ -49,7 +50,7 @@ Render uses Docker through `render.yaml`. During the Docker build, `scripts/buil
 engine/yaneuraou
 ```
 
-The default build target is `TARGET_CPU=SSE42` for safer Render compatibility. If Render's CPU supports AVX2 and the service is stable, it can be changed later for speed.
+The default build target is `TARGET_CPU=OTHER` for safer Render compatibility. If Render's CPU supports SSE42/AVX2 and the service is stable, it can be changed later for speed.
 
 Important endpoints:
 

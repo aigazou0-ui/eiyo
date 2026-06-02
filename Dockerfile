@@ -1,7 +1,7 @@
 FROM node:20-bookworm-slim AS build
 
 ARG YANEURAOU_REF=master
-ARG YANEURAOU_TARGET_CPU=SSE42
+ARG YANEURAOU_TARGET_CPU=OTHER
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

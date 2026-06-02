@@ -10,6 +10,8 @@ services:
         value: /app/engine/eval
       - key: YANEURAOU_EDITION
         value: YANEURAOU_ENGINE_MATERIAL
+      - key: YANEURAOU_TARGET_CPU
+        value: OTHER
       - key: YANEURAOU_MATERIAL_LEVEL
         value: 1
       - key: YANEURAOU_THREADS
