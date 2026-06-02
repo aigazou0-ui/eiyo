@@ -32,9 +32,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV YANEURAOU_PATH=/app/engine/yaneuraou
 ENV YANEURAOU_EVAL_DIR=/app/engine/eval
+ENV YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE
 ENV YANEURAOU_THREADS=1
 ENV YANEURAOU_HASH=16
 ENV YANEURAOU_MULTIPV=1
+ENV NNUE_EVAL_URL=https://raw.githubusercontent.com/Tama4649/Kristallweizen/master/Kristallweizen_kaiV0.4.zip
 
 COPY --from=build /app /app
 

@@ -6,6 +6,19 @@ const evalDir = process.env.YANEURAOU_EVAL_DIR || path.join(__dirname, "..", "en
 const evalPath = path.join(evalDir, "nn.bin");
 const evalUrl = process.env.NNUE_EVAL_URL || "";
 
+function findFile(root, fileName) {
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isFile() && entry.name === fileName) return fullPath;
+    if (entry.isDirectory()) {
+      const found = findFile(fullPath, fileName);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+
 async function main() {
   if (fs.existsSync(evalPath)) return;
   if (!evalUrl) {
@@ -15,8 +28,9 @@ async function main() {
   }
 
   fs.mkdirSync(evalDir, { recursive: true });
-  const isArchive = /\.7z(?:$|\?)/i.test(evalUrl);
-  const downloadPath = isArchive ? path.join(evalDir, "Suisho5.7z") : evalPath;
+  const isArchive = /\.(?:7z|zip)(?:$|\?)/i.test(evalUrl);
+  const archiveName = path.basename(new URL(evalUrl).pathname) || "eval.archive";
+  const downloadPath = isArchive ? path.join(evalDir, archiveName) : evalPath;
   console.log(`Downloading NNUE eval file from ${evalUrl}`);
   const response = await fetch(evalUrl);
   if (!response.ok) throw new Error(`Failed to download NNUE eval file: HTTP ${response.status}`);
@@ -26,7 +40,11 @@ async function main() {
   if (isArchive) {
     console.log(`Extracting NNUE archive: ${downloadPath}`);
     execFileSync("7z", ["x", downloadPath, `-o${evalDir}`, "-y"], { stdio: "inherit" });
-    if (!fs.existsSync(evalPath)) throw new Error(`Archive extracted, but nn.bin was not found: ${evalPath}`);
+    if (!fs.existsSync(evalPath)) {
+      const extractedEval = findFile(evalDir, "nn.bin");
+      if (!extractedEval) throw new Error(`Archive extracted, but nn.bin was not found under: ${evalDir}`);
+      fs.copyFileSync(extractedEval, evalPath);
+    }
     fs.rmSync(downloadPath, { force: true });
   }
 

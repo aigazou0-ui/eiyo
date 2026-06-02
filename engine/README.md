@@ -12,16 +12,25 @@ Place the Linux YaneuraOu executable here for Render:
 engine/yaneuraou
 ```
 
-Place the Suisho-style NNUE evaluation file here:
+For the free Render instance, the default external-eval test uses YaneuraOu NNUE with Kristallweizen Kai V0.4:
+
+```text
+YANEURAOU_EDITION=YANEURAOU_ENGINE_NNUE
+NNUE_EVAL_URL=https://raw.githubusercontent.com/Tama4649/Kristallweizen/master/Kristallweizen_kaiV0.4.zip
+```
+
+This is still an NNUE external evaluation file, so it may exceed Render's free 512 MB memory limit. It is lighter to operate than the previous Suisho5 startup path because it avoids the large Suisho archive, but the engine may still need a paid instance if Render kills it during `/bestmove`.
+
+If you place the NNUE evaluation file manually, use:
 
 ```text
 engine/eval/nn.bin
 ```
 
-On Render, you can also set this environment variable to a direct `nn.bin` URL or the official `Suisho5.7z` release asset:
+You can set this environment variable to a direct `nn.bin` URL, a `.zip` archive containing `nn.bin`, or the official `Suisho5.7z` release asset:
 
 ```text
-NNUE_EVAL_URL=https://github.com/yaneurao/YaneuraOu/releases/download/suisho5/Suisho5.7z
+NNUE_EVAL_URL=https://raw.githubusercontent.com/Tama4649/Kristallweizen/master/Kristallweizen_kaiV0.4.zip
 ```
 
 The server downloads and extracts it at startup if `engine/eval/nn.bin` is missing.

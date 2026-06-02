@@ -8,6 +8,8 @@ services:
         value: /app/engine/yaneuraou
       - key: YANEURAOU_EVAL_DIR
         value: /app/engine/eval
+      - key: YANEURAOU_EDITION
+        value: YANEURAOU_ENGINE_NNUE
       - key: YANEURAOU_THREADS
         value: 1
       - key: YANEURAOU_HASH
@@ -15,6 +17,6 @@ services:
       - key: YANEURAOU_MULTIPV
         value: 1
       - key: NNUE_EVAL_URL
-        sync: false
+        value: https://raw.githubusercontent.com/Tama4649/Kristallweizen/master/Kristallweizen_kaiV0.4.zip
       - key: ALLOW_ORIGIN
         value: "*"
