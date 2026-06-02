@@ -844,7 +844,7 @@
         && topBook.risk < 520 + level * 120
         && (!bookExchange || bookExchange.netMaterial > -220)
         && (!topFill || topBook.score >= topFill.score - 180);
-      const committedOpening = state.history.length < 40 && topBook && topBook.policy && topBook.risk < 420 + level * 110;
+      const committedOpening = state.history.length < 56 && topBook && topBook.policy && topBook.risk < 420 + level * 120;
       if (candidates.length && (level < 7 || safeBook || committedOpening)) {
         return { bestMove: candidates[0].move, candidates, nodes: moves.length, depth: 1 };
       }

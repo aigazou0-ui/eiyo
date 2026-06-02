@@ -1170,7 +1170,7 @@
 
   function init() {
     [
-      "titleScreen", "gameScreen", "reviewScreen", "licenseScreen", "titleLevelSelect", "startGameBtn", "licenseTitleBtn",
+      "titleScreen", "gameScreen", "reviewScreen", "licenseScreen", "titleLevelSelect", "startGameBtn", "titleLicenseBtn", "licenseTitleBtn",
       "board", "blackHand", "whiteHand", "gamePopup", "kifuList", "moveCount",
       "blackPercent", "whitePercent", "meterFill", "gameLevelLabel", "resignBtn", "gameTitleBtn",
       "candidates", "thinkingBadge", "reviewBoard", "reviewBlackHand", "reviewWhiteHand",
@@ -1190,6 +1190,7 @@
     state.version = STATE_VERSION;
     bindAudioUnlock();
     els.startGameBtn.addEventListener("click", startGame);
+    if (els.titleLicenseBtn) els.titleLicenseBtn.addEventListener("click", showLicense);
     els.licenseTitleBtn.addEventListener("click", showTitle);
     els.resignBtn.addEventListener("click", resignGame);
     els.gameTitleBtn.addEventListener("click", showTitle);

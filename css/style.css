@@ -160,6 +160,18 @@ button:hover, select:hover { border-color: var(--accent); }
   font-weight: 900;
 }
 
+.text-action {
+  color: #d7c29b;
+  border: 1px solid rgba(214, 174, 99, .28);
+  background: rgba(255,255,255,.05);
+  font-weight: 800;
+}
+
+.text-action:hover {
+  border-color: rgba(214, 174, 99, .6);
+  background: rgba(214, 174, 99, .12);
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 14px;

@@ -9,14 +9,14 @@ services:
       - key: YANEURAOU_EVAL_DIR
         value: /app/engine/eval
       - key: YANEURAOU_EDITION
-        value: YANEURAOU_ENGINE_NNUE
+        value: YANEURAOU_ENGINE_MATERIAL
+      - key: YANEURAOU_MATERIAL_LEVEL
+        value: 9
       - key: YANEURAOU_THREADS
         value: 1
       - key: YANEURAOU_HASH
         value: 16
       - key: YANEURAOU_MULTIPV
         value: 1
-      - key: NNUE_EVAL_URL
-        value: https://raw.githubusercontent.com/Tama4649/Kristallweizen/master/Kristallweizen_kaiV0.4.zip
       - key: ALLOW_ORIGIN
         value: "*"

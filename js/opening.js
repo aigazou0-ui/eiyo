@@ -244,7 +244,7 @@
 
   function repairCandidates(state, legalMoves, style) {
     const ply = state.history.length;
-    if (ply > 40) return [];
+    if (ply > 56) return [];
     const history = historyUsi(state);
     const list = [];
     for (const line of activeLines(style)) {
@@ -281,7 +281,7 @@
 
   function policyCandidates(state, legalMoves, style) {
     const ply = state.history.length;
-    if (ply > 40) return [];
+    if (ply > 56) return [];
     return merge(legalMoves
       .map(move => {
         const bonus = policyBonus(state, move, style);
@@ -302,7 +302,7 @@
   }
 
   function candidates(state, legalMoves, options = {}) {
-    if (state.history.length > 40) return [];
+    if (state.history.length > 56) return [];
     const style = options.style || state.openingStyle || "balanced";
     const exact = exactCandidates(state, legalMoves, style);
     if (exact.length) return exact;

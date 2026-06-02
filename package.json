@@ -4,7 +4,7 @@
   "private": true,
   "description": "Shogi USI engine API for Render and local testing",
   "scripts": {
-    "start": "node scripts/prepare-runtime.js && node server.js",
+    "start": "node server.js",
     "health": "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||4173)+'/health').then(r=>r.json()).then(console.log)\""
   },
   "engines": {

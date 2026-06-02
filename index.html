@@ -19,6 +19,7 @@
         </select>
       </label>
       <button id="startGameBtn" class="primary-action">対局開始</button>
+      <button id="titleLicenseBtn" class="text-action">ライセンス</button>
     </div>
   </section>
 
@@ -201,11 +202,9 @@
         <p>ソース入手先: <a href="https://github.com/yaneurao/YaneuraOu">https://github.com/yaneurao/YaneuraOu</a></p>
       </section>
       <section class="panel license-panel">
-        <h2>水匠5 評価関数</h2>
-        <p>ライセンス: GPL v3</p>
-        <p>入手先: <a href="https://github.com/yaneurao/YaneuraOu/releases">https://github.com/yaneurao/YaneuraOu/releases</a></p>
-        <p>NNUE実装ソース参考: <a href="https://github.com/ynasu87/nnue">https://github.com/ynasu87/nnue</a></p>
-        <p>このローカル構成では <code>engine/eval/nn.bin</code> に配置する前提です。</p>
+        <h2>現在のAI構成</h2>
+        <p>Render無料枠では、外部評価関数を使わない <code>YANEURAOU_ENGINE_MATERIAL</code> 構成を使用します。</p>
+        <p>水匠5などの外部NNUE評価関数は、無料枠のメモリ上限を超えやすいため現在は使用していません。</p>
       </section>
       <section class="panel license-panel">
         <h2>GPL-3.0 本文</h2>
@@ -219,13 +218,13 @@
   <script src="js/board.js?v=75"></script>
   <script src="js/rules.js?v=75"></script>
   <script src="js/evaluation.js?v=75"></script>
-  <script src="js/opening.js?v=75"></script>
-  <script src="js/ai.js?v=78"></script>
+  <script src="js/opening.js?v=79"></script>
+  <script src="js/ai.js?v=79"></script>
   <script src="js/usi.js?v=75"></script>
   <script src="js/sfen.js?v=75"></script>
   <script src="js/kifu.js?v=75"></script>
   <script src="js/graph.js?v=75"></script>
   <script src="js/ai-test.js?v=75"></script>
-  <script src="js/main.js?v=78"></script>
+  <script src="js/main.js?v=79"></script>
 </body>
 </html>
