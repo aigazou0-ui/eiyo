@@ -20,5 +20,7 @@ services:
         value: 16
       - key: YANEURAOU_MULTIPV
         value: 1
+      - key: YANEURAOU_SKIP_READY
+        value: 1
       - key: ALLOW_ORIGIN
         value: "*"

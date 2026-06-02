@@ -11,6 +11,7 @@ const ENGINE_THREADS = Number(process.env.YANEURAOU_THREADS || 1);
 const ENGINE_HASH = Number(process.env.YANEURAOU_HASH || 16);
 const ENGINE_MULTIPV = Number(process.env.YANEURAOU_MULTIPV || 1);
 const ENGINE_EDITION = process.env.YANEURAOU_EDITION || "";
+const ENGINE_SKIP_READY = String(process.env.YANEURAOU_SKIP_READY || "1") !== "0";
 const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "*";
 
 const MIME = {
@@ -82,9 +83,13 @@ class UsiEngine {
     if (!/MATERIAL/i.test(ENGINE_EDITION) && fs.existsSync(path.join(this.evalDir, "nn.bin"))) {
       this.setOption("EvalDir", this.evalDir);
     }
-    this.send("isready");
-    await this.waitFor(line => line === "readyok", 20000);
-    console.log("[engine] readyok");
+    if (ENGINE_SKIP_READY) {
+      console.log("[engine] ready check skipped");
+    } else {
+      this.send("isready");
+      await this.waitFor(line => line === "readyok", 20000);
+      console.log("[engine] readyok");
+    }
     this.ready = true;
   }
 
@@ -247,6 +252,7 @@ function engineStatus() {
     evalDir: EVAL_DIR,
     evalExists: fs.existsSync(path.join(EVAL_DIR, "nn.bin")),
     edition: ENGINE_EDITION || null,
+    skipReady: ENGINE_SKIP_READY,
     threads: ENGINE_THREADS,
     hash: ENGINE_HASH,
     multipv: ENGINE_MULTIPV
