@@ -12,8 +12,6 @@
   let cpuThinking = false;
   let reviewPly = 0;
   let reviewHistory = [];
-  const aiMode = "yaneuraou";
-  const ENGINE_API_BASE = "https://shogi-yaneuraou-api.onrender.com";
   let cpuProfile = null;
   let cachedCandidates = [];
   let cachedCandidateKey = "";
@@ -627,7 +625,7 @@
     }
     const profile = currentCpuProfile();
     const mobile = isMobileAiMode();
-    const key = `${state.history.length}:${state.turn}:${level}:${aiMode}:${profile.personality}:${profile.randomness}:${profile.openingStyle}:${mobile ? "m" : "p"}`;
+    const key = `${state.history.length}:${state.turn}:${level}:${profile.personality}:${profile.randomness}:${profile.openingStyle}:${mobile ? "m" : "p"}`;
     if (cachedCandidateKey === key) return cachedCandidates;
     const cpuState = window.ShogiBoard.cloneState(state);
     cpuState.turn = cpuSide;
@@ -636,33 +634,6 @@
     cachedCandidates = window.ShogiAI.candidates(cpuState, previewLevel, { mobile, preview: true }).slice(0, 3);
     cachedCandidateKey = key;
     return cachedCandidates;
-  }
-
-  async function getEngineBestMove(level) {
-    if (aiMode !== "yaneuraou") return null;
-    const engineLevel = level >= 8 ? "strong" : "normal";
-    const movetime = engineLevel === "strong" ? 1000 : 500;
-    const response = await fetch(`${ENGINE_API_BASE}/bestmove`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        sfen: window.ShogiUsi.stateToSfen(state),
-        level: engineLevel,
-        purpose: "cpu",
-        side: cpuSide,
-        ply: state.history.length + 1,
-        byoyomi: 1000,
-        movetime
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || "USI engine is unavailable");
-    const move = window.ShogiUsi.usiToMove(payload.bestmove, state);
-    const candidates = (payload.candidates || [])
-      .map(item => window.ShogiUsi.candidateFromUsi(item, state))
-      .filter(Boolean)
-      .slice(0, 3);
-    return { move, candidates };
   }
 
   function candidateEmptyText() {
@@ -727,7 +698,7 @@
       cachedCandidates = list.slice(0, 3);
       if (list.baseState) cachedCandidates.baseState = list.baseState;
       const profile = currentCpuProfile();
-      cachedCandidateKey = `${state.history.length}:${state.turn}:${getLevel()}:${aiMode}:${profile.personality}:${profile.randomness}:${profile.openingStyle}:${isMobileAiMode() ? "m" : "p"}`;
+      cachedCandidateKey = `${state.history.length}:${state.turn}:${getLevel()}:${profile.personality}:${profile.randomness}:${profile.openingStyle}:${isMobileAiMode() ? "m" : "p"}`;
     }
     renderCandidateList(els.candidates, list);
     renderCandidateList(els.mobileCandidates, list);
@@ -969,7 +940,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=78");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=80");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;
@@ -1004,7 +975,7 @@
       aiWorker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode() });
 
       const fallbackTimeout = isMobileAiMode()
-        ? (level >= 9 ? 1800 : level >= 5 ? 1100 : 550)
+        ? (level >= 9 ? 2200 : level >= 5 ? 1200 : 450)
         : Math.max(2500, 250 + level * 450);
       setTimeout(() => {
         if (settled) return;
@@ -1067,14 +1038,12 @@
     els.titleScreen.classList.remove("hidden");
     els.gameScreen.classList.add("hidden");
     els.reviewScreen.classList.add("hidden");
-    if (els.licenseScreen) els.licenseScreen.classList.add("hidden");
   }
 
   function showGame() {
     els.titleScreen.classList.add("hidden");
     els.gameScreen.classList.remove("hidden");
     els.reviewScreen.classList.add("hidden");
-    if (els.licenseScreen) els.licenseScreen.classList.add("hidden");
   }
 
   function showReview(ply) {
@@ -1083,16 +1052,7 @@
     els.titleScreen.classList.add("hidden");
     els.gameScreen.classList.add("hidden");
     els.reviewScreen.classList.remove("hidden");
-    if (els.licenseScreen) els.licenseScreen.classList.add("hidden");
     renderReview();
-  }
-
-  function showLicense() {
-    closeMobileSheet();
-    els.titleScreen.classList.add("hidden");
-    els.gameScreen.classList.add("hidden");
-    els.reviewScreen.classList.add("hidden");
-    els.licenseScreen.classList.remove("hidden");
   }
 
   function startGame() {
@@ -1177,7 +1137,7 @@
 
   function init() {
     [
-      "titleScreen", "gameScreen", "reviewScreen", "licenseScreen", "titleLevelSelect", "startGameBtn", "titleLicenseBtn", "licenseTitleBtn",
+      "titleScreen", "gameScreen", "reviewScreen", "titleLevelSelect", "startGameBtn",
       "board", "blackHand", "whiteHand", "gamePopup", "kifuList", "moveCount",
       "blackPercent", "whitePercent", "meterFill", "gameLevelLabel", "resignBtn", "gameTitleBtn",
       "candidates", "thinkingBadge", "reviewBoard", "reviewBlackHand", "reviewWhiteHand",
@@ -1197,8 +1157,6 @@
     state.version = STATE_VERSION;
     bindAudioUnlock();
     els.startGameBtn.addEventListener("click", startGame);
-    if (els.titleLicenseBtn) els.titleLicenseBtn.addEventListener("click", showLicense);
-    els.licenseTitleBtn.addEventListener("click", showTitle);
     els.resignBtn.addEventListener("click", resignGame);
     els.gameTitleBtn.addEventListener("click", showTitle);
     bindReviewControls();

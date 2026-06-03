@@ -12,16 +12,16 @@
   const DEBUG_AI = false;
 
   const LEVELS = {
-    1: { depth: 1, time: 80, random: 520, reply: 0, danger: 0.12, q: false, tt: false },
-    2: { depth: 1, time: 120, random: 80, reply: 0, danger: 0.22, q: false, tt: false },
-    3: { depth: 1, time: 180, random: 35, reply: 28, danger: 0.34, q: false, tt: false },
-    4: { depth: 2, time: 260, random: 18, reply: 48, danger: 0.48, q: false, tt: false },
-    5: { depth: 3, time: 420, random: 8, reply: 64, danger: 0.62, q: false, tt: false },
-    6: { depth: 4, time: 650, random: 3, reply: 80, danger: 0.76, q: false, tt: false, iterative: true },
-    7: { depth: 4, time: 850, random: 2, reply: 96, danger: 0.9, q: false, tt: true, iterative: true },
-    8: { depth: 4, time: 1050, random: 1, reply: 120, danger: 1.04, q: true, tt: true, iterative: true },
-    9: { depth: 5, time: 1300, random: 0, reply: 140, danger: 1.18, q: true, tt: true, iterative: true },
-    10: { depth: 5, time: 1700, random: 0, reply: 180, danger: 1.35, q: true, tt: true, iterative: true }
+    1: { depth: 1, time: 120, random: 520, reply: 0, danger: 0.12, q: false, tt: false, nodeLimit: 1200 },
+    2: { depth: 1, time: 180, random: 80, reply: 0, danger: 0.22, q: false, tt: false, nodeLimit: 1800 },
+    3: { depth: 1, time: 260, random: 35, reply: 28, danger: 0.34, q: false, tt: false, nodeLimit: 2600 },
+    4: { depth: 2, time: 360, random: 18, reply: 48, danger: 0.48, q: false, tt: false, nodeLimit: 4200 },
+    5: { depth: 3, time: 800, random: 8, reply: 64, danger: 0.62, q: false, tt: false, iterative: true, nodeLimit: 9000 },
+    6: { depth: 4, time: 900, random: 3, reply: 80, danger: 0.76, q: false, tt: false, iterative: true, nodeLimit: 13000 },
+    7: { depth: 4, time: 1100, random: 2, reply: 96, danger: 0.9, q: false, tt: true, iterative: true, nodeLimit: 18000 },
+    8: { depth: 4, time: 1250, random: 1, reply: 120, danger: 1.04, q: true, tt: true, iterative: true, nodeLimit: 23000 },
+    9: { depth: 5, time: 1450, random: 0, reply: 140, danger: 1.18, q: true, tt: true, iterative: true, nodeLimit: 30000 },
+    10: { depth: 5, time: 1850, random: 0, reply: 180, danger: 1.35, q: true, tt: true, iterative: true, nodeLimit: 38000 }
   };
 
   function config(level, options = {}) {
@@ -29,16 +29,17 @@
     const cfg = Object.assign({}, LEVELS[lv] || LEVELS[2]);
     if (options.mobile) {
       cfg.mobile = true;
-      cfg.time = Math.min(cfg.time, lv >= 9 ? 850 : lv >= 7 ? 480 : lv >= 5 ? 300 : 120);
-      cfg.depth = Math.min(cfg.depth, lv >= 9 ? 3 : lv >= 6 ? 2 : cfg.depth);
+      cfg.time = Math.min(cfg.time, lv >= 9 ? 1500 : lv >= 7 ? 900 : lv >= 5 ? 650 : 300);
+      cfg.depth = Math.min(cfg.depth, lv >= 9 ? 4 : lv >= 6 ? 3 : lv >= 5 ? 2 : cfg.depth);
       cfg.iterative = lv >= 7;
-      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 46 : lv >= 6 ? 22 : 8);
-      cfg.q = false;
+      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 20 : lv >= 7 ? 12 : lv >= 5 ? 4 : 2);
+      cfg.q = lv >= 9;
       cfg.tt = lv >= 8;
-      cfg.mobileRootLimit = lv >= 9 ? 18 : lv >= 7 ? 13 : 8;
-      cfg.mobileBranchLimit = lv >= 9 ? 10 : lv >= 7 ? 7 : 5;
-      cfg.mobileQLimit = 6;
+      cfg.mobileRootLimit = lv >= 9 ? 24 : lv >= 7 ? 16 : 10;
+      cfg.mobileBranchLimit = lv >= 9 ? 12 : lv >= 7 ? 8 : 6;
+      cfg.mobileQLimit = lv >= 9 ? 8 : 6;
       cfg.mobileMateDepth = lv >= 8 ? 3 : 1;
+      cfg.nodeLimit = Math.min(cfg.nodeLimit || 6000, lv >= 9 ? 22000 : lv >= 7 ? 11000 : lv >= 5 ? 4500 : 1600);
     }
     return cfg;
   }
@@ -207,6 +208,23 @@
     if (state.history.length > 30) penalty += 120;
     if (toWing < fromWing) penalty += 180;
     if (toCastle < fromCastle && fromWing >= 2) penalty += 180;
+    return penalty;
+  }
+
+  function earlyMajorPieceSortiePenalty(state, move, side) {
+    if (!move || move.drop || move.capture || state.history.length > 42) return 0;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || (piece.type !== "R" && piece.type !== "B")) return 0;
+    const homeRank = side === "b" ? 8 : 0;
+    const advanced = advancedRank(side, move.to);
+    let penalty = 0;
+    if (piece.type === "B" && Math.abs(move.from.r - homeRank) <= 1 && advanced < 5) penalty += 360;
+    if (piece.type === "R" && Math.abs(move.to.c - move.from.c) >= 2 && state.history.length < 34) penalty += 420;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, window.ShogiBoard.opponent(side), move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (attacked && !defended) penalty += piece.type === "R" ? 900 : 720;
     return penalty;
   }
 
@@ -394,6 +412,7 @@
     }
     risk += unsupportedDropRisk(state, move, side) * (0.75 + level * 0.08);
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
+    risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
 
     return risk;
   }
@@ -602,6 +621,7 @@
 
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 5 && ply < 42) score -= move.capture ? 360 : 1100;
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 6 && ply < 52) score -= move.capture ? 420 : 1400;
+      if ((p.type === "R" || p.type === "B") && !move.capture) score -= earlyMajorPieceSortiePenalty(state, move, side);
       if (p.type !== "P" && p.type !== "K" && advancedAfter >= 6 && ply < 24 && !move.capture) score -= 420;
     }
 
@@ -658,7 +678,7 @@
   }
 
   function timeout(ctx) {
-    return performance.now() >= ctx.deadline;
+    return performance.now() >= ctx.deadline || ctx.nodes >= ctx.nodeLimit;
   }
 
   function terminalScore(state, side, ply) {
@@ -668,7 +688,11 @@
   }
 
   function quiescence(state, alpha, beta, ctx, ply) {
-    if (timeout(ctx) || ply > (ctx.mobile ? 5 : 8)) return evaluateForSide(state, state.turn);
+    if (timeout(ctx)) {
+      ctx.timedOut = true;
+      return evaluateForSide(state, state.turn);
+    }
+    if (ply > (ctx.mobile ? 5 : 8)) return evaluateForSide(state, state.turn);
     let stand = evaluateForSide(state, state.turn);
     if (stand >= beta) return beta;
     if (stand > alpha) alpha = stand;
@@ -693,6 +717,10 @@
       return evaluateForSide(state, state.turn);
     }
     ctx.nodes++;
+    if ((ctx.nodes & 63) === 0 && timeout(ctx)) {
+      ctx.timedOut = true;
+      return evaluateForSide(state, state.turn);
+    }
 
     const alphaOrig = alpha;
     const key = ctx.useTT ? stateKey(state) : "";
@@ -798,8 +826,10 @@
 
   function searchRoot(state, level, options = {}) {
     const cfg = config(level, options);
+    const rootDeadline = performance.now() + cfg.time;
     const moves = window.ShogiRules.legalMoves(state, state.turn);
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
+    const fallbackMove = moves[0];
 
     const mateDepth = cfg.mobile ? cfg.mobileMateDepth : level >= 8 ? 5 : level >= 5 ? 3 : 1;
     const mate = window.ShogiRules.findMate(state, state.turn, mateDepth);
@@ -817,27 +847,48 @@
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
       : [];
     if (level >= 1 && bookMoves.length) {
-      const scoredBook = bookMoves
-        .map(item => {
+      if (cfg.mobile && state.history.length < 24) {
+        const policyMoves = bookMoves
+          .filter(item => item.policy)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+        if (policyMoves.length) {
+          const candidates = policyMoves.map(item => Object.assign({}, item, {
+            score: item.score + Math.max(0, 40 - state.history.length) * 2600,
+            depth: 1,
+            nodes: moves.length,
+            pv: [item.move]
+          }));
+          return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
+        }
+      }
+      const scoredBook = [];
+      for (const item of (cfg.mobile ? bookMoves.slice(0, 8) : bookMoves)) {
+        if (performance.now() >= rootDeadline) break;
           const risk = tacticalRisk(state, item.move, state.turn, level, cfg);
           const policyBoost = item.policy ? Math.max(0, 40 - state.history.length) * 2600 : 0;
-          return Object.assign({}, item, {
+        scoredBook.push(Object.assign({}, item, {
             score: item.score + policyBoost + shallowRank(state, item.move, level, cfg) - risk * (cfg.danger + 0.35),
             risk,
             depth: 1,
             nodes: moves.length,
             pv: [item.move]
-          });
-        })
+        }));
+      }
+      const safeScoredBook = scoredBook
         .filter(item => item.risk < 520 + level * 170)
         .sort((a, b) => b.score - a.score);
-      const fill = moves
-        .filter(move => !scoredBook.some(item => moveKey(item.move) === moveKey(move)))
-        .map(move => ({ move, score: shallowRank(state, move, level, cfg), depth: 1, nodes: moves.length, pv: [move] }))
+      const fillSource = cfg.mobile ? moves.slice(0, 14) : moves;
+      const fill = fillSource
+        .filter(move => !safeScoredBook.some(item => moveKey(item.move) === moveKey(move)))
+        .map(move => {
+          if (performance.now() >= rootDeadline) return { move, score: -INF, depth: 1, nodes: moves.length, pv: [move] };
+          return { move, score: shallowRank(state, move, level, cfg), depth: 1, nodes: moves.length, pv: [move] };
+        })
         .sort((a, b) => b.score - a.score)
-        .slice(0, Math.max(0, 3 - scoredBook.length));
-      const candidates = scoredBook.concat(fill).sort((a, b) => b.score - a.score).slice(0, 3);
-      const topBook = scoredBook[0];
+        .slice(0, Math.max(0, 3 - safeScoredBook.length));
+      const candidates = safeScoredBook.concat(fill).sort((a, b) => b.score - a.score).slice(0, 3);
+      const topBook = safeScoredBook[0];
       const topFill = fill[0];
       const bookExchange = topBook ? exchangeAfterMove(state, topBook.move, state.turn) : null;
       const safeBook = topBook
@@ -848,13 +899,16 @@
       if (candidates.length && (level < 7 || safeBook || committedOpening)) {
         return { bestMove: candidates[0].move, candidates, nodes: moves.length, depth: 1 };
       }
+      if (performance.now() >= rootDeadline && candidates.length) {
+        return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
+      }
     }
 
     if (cfg.depth <= 1 && !cfg.iterative) {
       const ranked = (cfg.mobile ? orderedMoves(state, moves, null, 0).slice(0, 32) : moves)
         .map(move => ({ move, score: shallowRank(state, move, level, cfg), depth: 1, nodes: moves.length, pv: [move] }))
         .sort((a, b) => b.score - a.score);
-      return { bestMove: level === 1 ? ranked[Math.floor(Math.random() * Math.min(5, ranked.length))].move : ranked[0].move, candidates: ranked.slice(0, 3), nodes: moves.length, depth: 1 };
+      return { bestMove: level === 1 ? ranked[Math.floor(Math.random() * Math.min(5, ranked.length))].move : (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked.slice(0, 3), nodes: moves.length, depth: 1 };
     }
 
     const ctx = {
@@ -866,7 +920,8 @@
       mobile: !!cfg.mobile,
       mobileRootLimit: cfg.mobileRootLimit || 30,
       mobileBranchLimit: cfg.mobileBranchLimit || 18,
-      mobileQLimit: cfg.mobileQLimit || 12
+      mobileQLimit: cfg.mobileQLimit || 12,
+      nodeLimit: cfg.nodeLimit || 20000
     };
     let bestCandidates = [];
     let bestMove = null;

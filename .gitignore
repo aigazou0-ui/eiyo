@@ -1,6 +1,0 @@
-server.err.log
-server.out.log
-engine/yaneuraou
-engine/yaneuraou.exe
-engine/eval/*
-!engine/eval/.gitkeep

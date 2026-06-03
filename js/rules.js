@@ -184,7 +184,9 @@
     for (const move of moves) {
       const temp = Object.assign(window.ShogiBoard.cloneState(state), { turn: side });
       const next = applyMove(temp, move);
-      if (isCheckmate(next, opponent(side))) return move;
+      const defender = opponent(side);
+      if (!inCheck(next, defender)) continue;
+      if (legalMoves(next, defender).length === 0) return move;
     }
     return null;
   }
