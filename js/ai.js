@@ -32,13 +32,13 @@
       cfg.time = Math.min(cfg.time, lv >= 9 ? 1500 : lv >= 7 ? 900 : lv >= 5 ? 650 : 300);
       cfg.depth = Math.min(cfg.depth, lv >= 9 ? 4 : lv >= 6 ? 3 : lv >= 5 ? 2 : cfg.depth);
       cfg.iterative = lv >= 7;
-      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 20 : lv >= 7 ? 12 : lv >= 5 ? 4 : 2);
+      cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 6 : lv >= 7 ? 4 : lv >= 5 ? 2 : 1);
       cfg.q = lv >= 9;
       cfg.tt = lv >= 8;
       cfg.mobileRootLimit = lv >= 9 ? 24 : lv >= 7 ? 16 : 10;
       cfg.mobileBranchLimit = lv >= 9 ? 12 : lv >= 7 ? 8 : 6;
       cfg.mobileQLimit = lv >= 9 ? 8 : 6;
-      cfg.mobileMateDepth = lv >= 8 ? 3 : 1;
+      cfg.mobileMateDepth = options.mobileMateDepth || 1;
       cfg.nodeLimit = Math.min(cfg.nodeLimit || 6000, lv >= 9 ? 22000 : lv >= 7 ? 11000 : lv >= 5 ? 4500 : 1600);
     }
     return cfg;
@@ -226,6 +226,24 @@
     window.ShogiBoard.undoMove(state, undo);
     if (attacked && !defended) penalty += piece.type === "R" ? 900 : 720;
     return penalty;
+  }
+
+  function majorEscapeBonus(state, move, side) {
+    if (!move || move.drop || !move.from) return 0;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || (piece.type !== "R" && piece.type !== "B")) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const beforeAttacked = window.ShogiRules.attacksSquare(state, enemy, move.from);
+    const beforeDefended = window.ShogiRules.attacksSquare(state, side, move.from);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const afterAttacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const afterDefended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    let bonus = 0;
+    if (beforeAttacked && (!beforeDefended || move.capture)) bonus += piece.type === "R" ? 520 : 420;
+    if (!afterAttacked || afterDefended) bonus += piece.type === "R" ? 160 : 130;
+    if (afterAttacked && !afterDefended) bonus -= piece.type === "R" ? 900 : 720;
+    return bonus;
   }
 
   function leastCaptureTo(state, side, square) {
@@ -622,6 +640,7 @@
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 5 && ply < 42) score -= move.capture ? 360 : 1100;
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 6 && ply < 52) score -= move.capture ? 420 : 1400;
       if ((p.type === "R" || p.type === "B") && !move.capture) score -= earlyMajorPieceSortiePenalty(state, move, side);
+      if (p.type === "R" || p.type === "B") score += majorEscapeBonus(state, move, side);
       if (p.type !== "P" && p.type !== "K" && advancedAfter >= 6 && ply < 24 && !move.capture) score -= 420;
     }
 
@@ -659,8 +678,58 @@
     return score;
   }
 
-  function orderedMoves(state, moves, hashMove, ply) {
+  function cheapOrderingScore(state, move, hashMove) {
+    const key = moveKey(move);
+    if (hashMove && key === hashMove) return 1000000;
+    let score = 0;
+    if (move.capture) {
+      const target = !move.drop ? state.board[move.to.r][move.to.c] : null;
+      score += 50000 + basePieceValue(target);
+    }
+    if (move.promote) score += 24000;
+    if (move.drop) {
+      if (move.piece === "G" || move.piece === "S") score += 9000;
+      else if (move.piece === "P") score += 1500;
+    } else {
+      const piece = state.board[move.from.r][move.from.c];
+      if (piece) {
+        const advanced = advancedRank(piece.owner, move.to);
+        if (piece.type === "R" || piece.type === "B") score += move.capture ? 12000 : -4000;
+        if (piece.type === "S" || piece.type === "N") score += advanced * 900;
+        if (piece.type === "K") score -= 6000;
+      }
+    }
+    score += (4 - Math.abs(move.to.c - 4)) * 200;
+    return score;
+  }
+
+  function fastMobileCandidates(state, moves) {
+    const side = state.turn;
     return moves
+      .map(move => ({ move, score: cheapOrderingScore(state, move, null), depth: 1, nodes: moves.length, pv: [move] }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.min(28, moves.length))
+      .map((item, index) => {
+        if (index >= 14) return item;
+        const undo = window.ShogiBoard.makeMove(state, item.move);
+        const positional = evaluateForSide(state, side);
+        const checkBonus = window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side)) ? 60000 : 0;
+        window.ShogiBoard.undoMove(state, undo);
+        return Object.assign({}, item, { score: item.score + positional * 0.14 + checkBonus });
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  function orderedMoves(state, moves, hashMove, ply) {
+    const capped = moves.length > 80
+      ? moves
+        .map(move => ({ move, order: cheapOrderingScore(state, move, hashMove) }))
+        .sort((a, b) => b.order - a.order)
+        .slice(0, ply === 0 ? 72 : 42)
+        .map(item => item.move)
+      : moves;
+    return capped
       .map(move => ({ move, order: moveOrderingScore(state, move, hashMove, ply) }))
       .sort((a, b) => b.order - a.order)
       .map(item => item.move);
@@ -790,7 +859,7 @@
     score += strategy;
     score -= risk * cfg.danger;
     if (window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side))) score += 190;
-    if (window.ShogiRules.isCheckmate(state, window.ShogiBoard.opponent(side))) score += MATE / 2;
+    if (!cfg.mobile && window.ShogiRules.isCheckmate(state, window.ShogiBoard.opponent(side))) score += MATE / 2;
     if (exchange.check && !exchange.mateThreat && exchange.see < 0) score += exchange.see * (level >= 8 ? 1.4 : 0.9);
 
     if (cfg.reply) {
@@ -800,7 +869,7 @@
         const replyUndo = window.ShogiBoard.makeMove(state, reply);
         const replyScore = evaluateForSide(state, side);
         worst = Math.min(worst, replyScore);
-        if (window.ShogiRules.isCheckmate(state, side)) worst = -MATE / 2;
+        if (!cfg.mobile && window.ShogiRules.isCheckmate(state, side)) worst = -MATE / 2;
         window.ShogiBoard.undoMove(state, replyUndo);
       }
       score = score * 0.55 + worst * 0.45;
@@ -831,7 +900,11 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
-    const mateDepth = cfg.mobile ? cfg.mobileMateDepth : level >= 8 ? 5 : level >= 5 ? 3 : 1;
+    const handCount = ["b", "w"].reduce((sum, side) => sum + Object.values(state.hands[side] || {}).reduce((a, b) => a + (b || 0), 0), 0);
+    const canTryThreePlyMate = moves.length <= (cfg.mobile ? 34 : 48) && handCount <= (cfg.mobile ? 8 : 12);
+    const mateDepth = cfg.mobile
+      ? (cfg.mobileMateDepth >= 3 && canTryThreePlyMate ? 3 : 1)
+      : (level >= 8 && canTryThreePlyMate ? 5 : level >= 5 && canTryThreePlyMate ? 3 : 1);
     const mate = window.ShogiRules.findMate(state, state.turn, mateDepth);
     if (mate) {
       return {
@@ -840,6 +913,11 @@
         nodes: moves.length,
         depth: mateDepth
       };
+    }
+
+    if (cfg.mobile && (moves.length > 70 || state.history.length > 30)) {
+      const ranked = fastMobileCandidates(state, moves);
+      return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
 
     const profile = state.aiProfile && state.aiProfile[state.turn];

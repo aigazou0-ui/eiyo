@@ -274,6 +274,23 @@
       if (exact >= 0) best = Math.max(best, 360000 - exact * 2200);
     }
     if (!best || isRiskyBookMove(state, move)) return 0;
+    if (!move.drop && move.from) {
+      const piece = state.board[move.from.r][move.from.c];
+      if (piece) {
+        const advancedBefore = advancedRank(side, move.from);
+        const advancedAfter = advancedRank(side, move.to);
+        const centerTo = 4 - Math.abs(move.to.c - 4);
+        if (piece.type === "P") {
+          if (side === "b" && move.from.r === 6 && move.to.r === 5 && (move.from.c === 2 || move.from.c === 7)) best += 90000;
+          if (side === "w" && move.from.r === 2 && move.to.r === 3 && (move.from.c === 6 || move.from.c === 1)) best += 90000;
+          if (isBishopHeadPawnPushUsi(usi) && ply < 72) best = 0;
+        }
+        if (piece.type === "S" && advancedAfter > advancedBefore && advancedAfter <= 3) best += 65000 + centerTo * 5000;
+        if (piece.type === "G" && ply < 32 && (move.to.c <= 3 || move.to.c >= 5)) best += 36000;
+        if (piece.type === "K" && ply < 30 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) best += 70000;
+        if ((piece.type === "R" || piece.type === "B") && !move.capture && advancedAfter >= 4 && ply < 34) best -= 170000;
+      }
+    }
     if (move.capture && ply < 20) best -= 120000;
     if (move.drop && ply < 26) best -= 90000;
     return Math.max(0, best);

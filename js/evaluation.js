@@ -80,6 +80,16 @@
     return base * flexible * count - stackPenalty;
   }
 
+  function phaseWeights(phase) {
+    if (phase === "opening") {
+      return { king: 1.3, attack: 0.75, activity: 0.85, loose: 1.0, shape: 1.55, major: 1.25 };
+    }
+    if (phase === "endgame") {
+      return { king: 1.55, attack: 1.35, activity: 0.8, loose: 1.25, shape: 0.45, major: 1.1 };
+    }
+    return { king: 1.15, attack: 1.05, activity: 1.0, loose: 1.25, shape: 0.9, major: 1.2 };
+  }
+
   function detectGamePhase(state) {
     const ply = state.history.length;
     let handCount = 0;
@@ -185,6 +195,57 @@
     return penalty;
   }
 
+  function majorPieceSafety(state, side, phase, attacks) {
+    const enemy = side === "b" ? "w" : "b";
+    let score = 0;
+    const ply = state.history.length;
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      const p = state.board[r][c];
+      if (!p || p.owner !== side || (p.type !== "R" && p.type !== "B")) continue;
+      const mobility = pieceMobility(state, r, c, p);
+      const attacked = attacks[enemy][r][c] || 0;
+      const defended = attacks[side][r][c] || 0;
+      const advanced = side === "b" ? 8 - r : r;
+      if (attacked && !defended) score -= p.type === "R" ? 360 : 290;
+      else if (attacked > defended) score -= p.type === "R" ? 180 : 140;
+      if (mobility <= 2) score -= p.type === "R" ? 95 : 80;
+      if (mobility >= 7) score += p.type === "R" ? 55 : 45;
+      if (phase === "opening" && ply < 28 && advanced >= 5 && !p.promoted) score -= p.type === "R" ? 220 : 180;
+      if (p.promoted) score += phase === "endgame" ? 170 : 120;
+    }
+    return score;
+  }
+
+  function formationScore(state, side, phase) {
+    if (phase === "endgame") return 0;
+    const king = findKing(state, side);
+    if (!king) return -600;
+    const home = side === "b" ? 8 : 0;
+    let score = 0;
+    const kingMoved = Math.abs(king.c - 4) + Math.abs(king.r - home);
+    score += Math.min(150, kingMoved * 28);
+    if (king.c <= 2 || king.c >= 6) score += 90;
+
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      const p = state.board[r][c];
+      if (!p || p.owner !== side) continue;
+      const nearKing = Math.abs(r - king.r) + Math.abs(c - king.c);
+      const advanced = side === "b" ? home - r : r - home;
+      if ((p.type === "G" || p.type === "S") && nearKing <= 2) score += p.type === "G" ? 42 : 34;
+      if (p.type === "S" && advanced >= 1 && advanced <= 3) score += 30;
+      if (p.type === "N" && advanced === 0 && phase !== "opening") score -= 24;
+      if (p.type === "P" && advanced === 1) score += 8;
+    }
+
+    const rookPawn = side === "b" ? state.board[5][7] : state.board[3][1];
+    const bishopPathPawn = side === "b" ? state.board[5][2] : state.board[3][6];
+    const bishopHeadPawn = side === "b" ? state.board[5][1] : state.board[3][7];
+    if (rookPawn && rookPawn.owner === side && rookPawn.type === "P") score += 42;
+    if (bishopPathPawn && bishopPathPawn.owner === side && bishopPathPawn.type === "P") score += 54;
+    if (bishopHeadPawn && bishopHeadPawn.owner === side && bishopHeadPawn.type === "P") score -= 120;
+    return score;
+  }
+
   function endgamePressure(state, side, phase, attacks) {
     if (phase !== "endgame") return 0;
     const enemy = side === "b" ? "w" : "b";
@@ -277,11 +338,14 @@
       }
     }
 
-    score += kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks);
-    score += attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks);
+    const weights = phaseWeights(phase);
+    score += (kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks)) * weights.king;
+    score += (attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks)) * weights.attack;
     score += endgamePressure(state, "b", phase, attacks) - endgamePressure(state, "w", phase, attacks);
-    score += activityScore(state, "b", phase) - activityScore(state, "w", phase);
-    score -= loosePiecePenalty(state, "b", phase, attacks) - loosePiecePenalty(state, "w", phase, attacks);
+    score += (activityScore(state, "b", phase) - activityScore(state, "w", phase)) * weights.activity;
+    score -= (loosePiecePenalty(state, "b", phase, attacks) - loosePiecePenalty(state, "w", phase, attacks)) * weights.loose;
+    score += (majorPieceSafety(state, "b", phase, attacks) - majorPieceSafety(state, "w", phase, attacks)) * weights.major;
+    score += (formationScore(state, "b", phase) - formationScore(state, "w", phase)) * weights.shape;
     score += earlyGameBonus(state, "b") - earlyGameBonus(state, "w");
     if (window.ShogiRules.inCheck(state, "w")) score += 260;
     if (window.ShogiRules.inCheck(state, "b")) score -= 260;
