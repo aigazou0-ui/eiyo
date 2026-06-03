@@ -528,6 +528,60 @@
     const phase = phaseOf(state);
     const scale = (RANDOMNESS_SCALE[randomness] ?? 1) * (PERSONALITY_SCALE[personality] ?? 1);
 
+    if (cfg.mobile && phase === "opening" && base.candidates.some(item => item.book)) {
+      const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
+        selected: index === 0,
+        weight: index === 0 ? 1 : 0,
+        debug: item.debug || {
+          aiScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          rawScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          risk: 0,
+          reason: "序盤方針を優先"
+        }
+      }));
+      return Object.assign({}, base, {
+        bestMove: candidates[0].move,
+        candidates,
+        selection: { move: candidates[0].move, reason: "mobile-opening-book", forceBest: true, windowSize: 0, temperature: 0 }
+      });
+    }
+
+    if (cfg.mobile && state.history.length < 34 && base.depth <= 1 && base.candidates.length) {
+      const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
+        selected: index === 0,
+        weight: index === 0 ? 1 : 0,
+        debug: item.debug || {
+          aiScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          rawScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          risk: 0,
+          reason: "序盤方針を優先"
+        }
+      }));
+      return Object.assign({}, base, {
+        bestMove: candidates[0].move,
+        candidates,
+        selection: { move: candidates[0].move, reason: "mobile-opening-fast", forceBest: true, windowSize: 0, temperature: 0 }
+      });
+    }
+
+    if (cfg.mobile && (state.history.length > 30 || base.nodes > 70) && base.depth <= 1) {
+      const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
+        selected: index === 0,
+        weight: index === 0 ? 1 : 0,
+        debug: item.debug || {
+          aiScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          rawScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          risk: 0,
+          reason: "軽量評価を優先"
+        }
+      }));
+      return Object.assign({}, base, {
+        bestMove: candidates[0].move,
+        candidates,
+        selection: { move: candidates[0].move, reason: "mobile-fast-eval", forceBest: true, windowSize: 0, temperature: 0 }
+      });
+    }
+
     const ranked = base.candidates
       .map(item => {
         const risk = tacticalRisk(state, item.move, state.turn, lv, cfg);
@@ -686,6 +740,8 @@
       const target = !move.drop ? state.board[move.to.r][move.to.c] : null;
       score += 50000 + basePieceValue(target);
     }
+    if (isEarlyBishopHeadPawnPush(state, move, state.turn)) score -= 1000000;
+    if (isRecentReverse(state, move)) score -= 180000;
     if (move.promote) score += 24000;
     if (move.drop) {
       if (move.piece === "G" || move.piece === "S") score += 9000;
@@ -703,12 +759,32 @@
     return score;
   }
 
+  function isRecentReverse(state, move) {
+    if (!move || move.drop || move.capture || !move.from || state.history.length > 40) return false;
+    for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - 10); i -= 1) {
+      const prev = state.history[i];
+      if (!prev || prev.drop || !prev.from || !prev.to) continue;
+      if (prev.from.r === move.to.r && prev.from.c === move.to.c &&
+          prev.to.r === move.from.r && prev.to.c === move.from.c) return true;
+    }
+    return false;
+  }
+
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
-    return moves
+    let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side));
+    if (state.history.length < 34) {
+      const nonDrops = candidateMoves.filter(move => !move.drop);
+      if (nonDrops.length) candidateMoves = nonDrops;
+    }
+    const ordered = (candidateMoves.length ? candidateMoves : moves)
       .map(move => ({ move, score: cheapOrderingScore(state, move, null), depth: 1, nodes: moves.length, pv: [move] }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, Math.min(28, moves.length))
+      .slice(0, Math.min(28, moves.length));
+    if (state.history.length >= 22 || moves.length > 56) {
+      return ordered.slice(0, 3);
+    }
+    return ordered
       .map((item, index) => {
         if (index >= 14) return item;
         const undo = window.ShogiBoard.makeMove(state, item.move);
@@ -900,6 +976,11 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
+    if (cfg.mobile && state.history.length >= 22 && (moves.length > 40 || state.history.length >= 24)) {
+      const ranked = fastMobileCandidates(state, moves);
+      return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
+    }
+
     const handCount = ["b", "w"].reduce((sum, side) => sum + Object.values(state.hands[side] || {}).reduce((a, b) => a + (b || 0), 0), 0);
     const canTryThreePlyMate = moves.length <= (cfg.mobile ? 34 : 48) && handCount <= (cfg.mobile ? 8 : 12);
     const mateDepth = cfg.mobile
@@ -915,7 +996,7 @@
       };
     }
 
-    if (cfg.mobile && (moves.length > 70 || state.history.length > 30)) {
+    if (cfg.mobile && (moves.length > 70 || state.history.length >= 30)) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
@@ -925,6 +1006,23 @@
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
       : [];
     if (level >= 1 && bookMoves.length) {
+      if (cfg.mobile && state.history.length < 34) {
+        const candidates = bookMoves.slice(0, 3).map((item, index) => Object.assign({}, item, {
+          score: item.score,
+          depth: 1,
+          nodes: moves.length,
+          pv: [item.move],
+          selected: index === 0,
+          weight: index === 0 ? 1 : 0,
+          debug: {
+            aiScore: Math.round(item.score),
+            rawScore: Math.round(item.score),
+            risk: 0,
+            reason: "序盤方針を優先"
+          }
+        }));
+        return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
+      }
       if (cfg.mobile && state.history.length < 24) {
         const policyMoves = bookMoves
           .filter(item => item.policy)

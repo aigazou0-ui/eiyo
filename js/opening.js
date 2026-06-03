@@ -184,6 +184,7 @@
   function isRiskyBookMove(state, move) {
     if (!move || move.drop || !move.from) return false;
     if (isBishopHeadPawnPushUsi(moveToUsi(move)) && state.history.length < 72) return true;
+    if (isRecentReverseMove(state, move)) return true;
     const piece = state.board[move.from.r][move.from.c];
     if (!piece) return false;
     const ply = state.history.length;
@@ -191,6 +192,16 @@
     if ((piece.type === "R" || piece.type === "B") && advanced >= 5 && ply < 42) return true;
     if (piece.type !== "P" && piece.type !== "K" && advanced >= 6 && ply < 30 && !move.capture) return true;
     return false;
+  }
+
+  function isRecentReverseMove(state, move) {
+    if (!move || move.drop || move.capture || !move.from || state.history.length > 36) return false;
+    const lookback = state.history.slice(Math.max(0, state.history.length - 10));
+    return lookback.some(prev => {
+      if (!prev || prev.drop || !prev.from || !prev.to) return false;
+      return prev.from.r === move.to.r && prev.from.c === move.to.c &&
+        prev.to.r === move.from.r && prev.to.c === move.from.c;
+    });
   }
 
   function legalBookMove(state, legalMoves, usi) {
@@ -266,6 +277,7 @@
     const usi = moveToUsi(move);
     const ply = state.history.length;
     if (isBishopHeadPawnPushUsi(usi) && ply < 72) return 0;
+    if (isRecentReverseMove(state, move)) return 0;
     let best = 0;
     for (const tag of styleTags(style)) {
       const list = POLICY_MOVES[tag] && POLICY_MOVES[tag][side];
