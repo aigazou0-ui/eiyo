@@ -246,6 +246,162 @@
     return bonus;
   }
 
+  function findKing(state, side) {
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (p && p.owner === side && p.type === "K") return { r, c };
+      }
+    }
+    return null;
+  }
+
+  function distance(a, b) {
+    if (!a || !b) return 9;
+    return Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+  }
+
+  function attacksKingZoneFrom(state, square, side, enemyKing) {
+    if (!square || !enemyKing) return 0;
+    const piece = state.board[square.r][square.c];
+    if (!piece || piece.owner !== side || piece.type === "K") return 0;
+    let count = 0;
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, square.r, square.c, true)) {
+      const d = distance(pseudo.to, enemyKing);
+      if (d <= 1) count += 3;
+      else if (d <= 2) count += 1;
+    }
+    return count;
+  }
+
+  function nearOwnKing(state, side, square) {
+    const king = findKing(state, side);
+    return !!king && distance(king, square) <= 2;
+  }
+
+  function localAttackSupport(state, square, side, enemyKing) {
+    let support = 0;
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        if (!dr && !dc) continue;
+        const r = square.r + dr;
+        const c = square.c + dc;
+        if (r < 0 || r >= 9 || c < 0 || c >= 9) continue;
+        const p = state.board[r][c];
+        if (!p || p.owner !== side || p.type === "K") continue;
+        const d = Math.abs(dr) + Math.abs(dc);
+        const kingDist = distance({ r, c }, enemyKing);
+        if (d <= 1) support += 3;
+        else support += 1;
+        if (kingDist <= 4 && ["R", "B", "G", "S", "N"].includes(p.type)) support += 2;
+      }
+    }
+    return support;
+  }
+
+  function unsupportedAttackProbeRisk(state, move, side) {
+    if (!move || !move.to || move.capture || move.promote || window.ShogiRules.inCheck(state, side)) return 0;
+    const piece = move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
+    if (!piece || piece.type === "K") return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const beforeDist = (!move.drop && move.from) ? distance(move.from, enemyKing) : 9;
+    const advanced = advancedRank(side, move.to);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const afterDist = distance(move.to, enemyKing);
+    window.ShogiBoard.undoMove(state, undo);
+    if (gives || pressure > 0 || support >= 4 || (defended && !attacked)) return 0;
+    if (afterDist > beforeDist && advanced < 4) return 0;
+    if (piece.type === "P" && advanced >= 3) return defended ? 220 : 520;
+    if (piece.type === "S" || piece.type === "N" || piece.type === "L") return defended ? 160 : 340;
+    if (piece.type === "G") return nearOwnKing(state, side, move.to) ? 0 : 260;
+    if (piece.type === "R" || piece.type === "B") return defended ? 420 : 920;
+    return 0;
+  }
+
+  function fastShapeRisk(state, move, side) {
+    let risk = 0;
+    if (isEarlyBishopHeadPawnPush(state, move, side)) risk += 9000;
+    if (isRecentReverse(state, move)) risk += 520;
+    if (move.drop && state.history.length < 24) risk += 260;
+    if (!move.drop && move.from) {
+      const piece = state.board[move.from.r][move.from.c];
+      if (piece) {
+        const advanced = advancedRank(side, move.to);
+        if (piece.type === "P" && !move.capture && advanced >= 4) risk += 360;
+        if ((piece.type === "R" || piece.type === "B") && !move.capture && advanced >= 4 && state.history.length < 34) risk += 1300;
+        if (move.promote && (piece.type === "R" || piece.type === "B") && !move.capture && state.history.length < 30) risk += 900;
+      }
+    }
+    return risk;
+  }
+
+  function attackMomentumBonus(state, move, side) {
+    if (!move) return 0;
+    const ply = state.history.length;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const ownInCheck = window.ShogiRules.inCheck(state, side);
+    const piece = move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
+    if (!piece || piece.type === "K") return 0;
+
+    const beforeDist = (!move.drop && move.from) ? distance(move.from, enemyKing) : 9;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const afterPiece = state.board[move.to.r][move.to.c] || piece;
+    const afterDist = distance(move.to, enemyKing);
+    const zoneAttacks = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    window.ShogiBoard.undoMove(state, undo);
+
+    const phase = phaseOf(state);
+    const scale = phase === "opening" ? 0.45 : phase === "middle" ? 1 : 1.25;
+    let score = 0;
+    if (!move.drop && beforeDist < 9 && afterDist < beforeDist) score += (beforeDist - afterDist) * 70 * scale;
+    if (afterDist <= 3) score += 140 * scale;
+    else if (afterDist <= 4) score += 65 * scale;
+    score += zoneAttacks * 48 * scale;
+    if (support >= 4) score += 90 * scale;
+    else if (support >= 2) score += 42 * scale;
+    if (defended && (afterDist <= 4 || zoneAttacks > 0)) score += 70 * scale;
+
+    const advanced = advancedRank(side, move.to);
+    if (["S", "N", "P", "L"].includes(afterPiece.type) && advanced >= 4) score += 45 * scale;
+    if ((afterPiece.type === "R" || afterPiece.type === "B") && afterPiece.promoted && afterDist <= 4) score += 170;
+    if (move.drop && afterDist <= 3) score += ["G", "S"].includes(move.piece) ? 160 : 95;
+    if (gives) score += phase === "end" ? 180 : 70;
+
+    const quiet = !move.capture && !move.promote && !gives && !ownInCheck;
+    if (quiet && ply >= 26) {
+      if ((afterPiece.type === "R" || afterPiece.type === "B") && afterDist >= beforeDist && zoneAttacks === 0) score -= 520;
+      if ((afterPiece.type === "G" || afterPiece.type === "S") && !nearOwnKing(state, side, move.to) && afterDist >= beforeDist + 1) score -= 170;
+      if (isRecentReverse(state, move)) score -= afterPiece.type === "R" || afterPiece.type === "B" ? 520 : 260;
+    }
+
+    return Math.round(score);
+  }
+
+  function quietMajorPromotionPenalty(state, move, side) {
+    if (!move || move.drop || !move.promote || move.capture || state.history.length >= 54) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || (piece.type !== "R" && piece.type !== "B")) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const afterDist = distance(move.to, enemyKing);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    window.ShogiBoard.undoMove(state, undo);
+    if (gives || afterDist <= 3 || pressure > 0) return 0;
+    return piece.type === "R" ? 780 : 940;
+  }
+
   function leastCaptureTo(state, side, square) {
     const captures = window.ShogiRules.legalMoves(state, side)
       .filter(move => !move.drop && move.to.r === square.r && move.to.c === square.c)
@@ -425,12 +581,14 @@
       risk += 9000 + level * 420;
     }
     risk += loosePawnPushRisk(state, move, side) * (1.25 + level * 0.1);
+    risk += unsupportedAttackProbeRisk(state, move, side) * (0.85 + level * 0.08);
     if (isCheckMove && !exchange.mateThreat && exchange.see < -40) {
       risk += 420 + Math.abs(exchange.see) * (1.1 + level * 0.08);
     }
     risk += unsupportedDropRisk(state, move, side) * (0.75 + level * 0.08);
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
     risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
+    risk += quietMajorPromotionPenalty(state, move, side) * (0.9 + level * 0.08);
 
     return risk;
   }
@@ -664,9 +822,10 @@
 
   function strategicMoveBonus(state, move) {
     const ply = state.history.length;
-    if (ply > 34) return 0;
     const side = state.turn;
     let score = 0;
+    const momentum = attackMomentumBonus(state, move, side);
+    if (ply > 34) return momentum;
 
     if (!move.drop && move.from) {
       const p = state.board[move.from.r][move.from.c];
@@ -702,7 +861,7 @@
     if (move.drop && ply < 24) score -= 240;
     if (move.drop && unsupportedDropRisk(state, move, side)) score -= unsupportedDropRisk(state, move, side) * 0.9;
     if (givesCheck(state, move, side) && ply < 32 && !move.capture) score -= 360;
-    return score;
+    return score + momentum;
   }
 
   function moveOrderingScore(state, move, hashMove, ply) {
@@ -716,7 +875,7 @@
       score += Math.max(-260000, Math.min(260000, exchange.see * 180));
       if (exchange.see < -160) score -= 260000;
     }
-    if (move.promote) score += 110000;
+    if (move.promote) score += Math.max(12000, 110000 - quietMajorPromotionPenalty(state, move, state.turn) * 120);
     if (givesCheck(state, move, state.turn)) {
       exchange = exchange || exchangeAfterMove(state, move, state.turn);
       if (exchange.mateThreat) score += 170000;
@@ -741,8 +900,8 @@
       score += 50000 + basePieceValue(target);
     }
     if (isEarlyBishopHeadPawnPush(state, move, state.turn)) score -= 1000000;
-    if (isRecentReverse(state, move)) score -= 180000;
-    if (move.promote) score += 24000;
+    if (isRecentReverse(state, move)) score -= 260000;
+    if (move.promote) score += Math.max(5000, 24000 - quietMajorPromotionPenalty(state, move, state.turn) * 45);
     if (move.drop) {
       if (move.piece === "G" || move.piece === "S") score += 9000;
       else if (move.piece === "P") score += 1500;
@@ -755,13 +914,16 @@
         if (piece.type === "K") score -= 6000;
       }
     }
+    score += attackMomentumBonus(state, move, state.turn) * 140;
     score += (4 - Math.abs(move.to.c - 4)) * 200;
     return score;
   }
 
   function isRecentReverse(state, move) {
-    if (!move || move.drop || move.capture || !move.from || state.history.length > 40) return false;
-    for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - 10); i -= 1) {
+    if (!move || move.drop || move.capture || !move.from || state.history.length > 96) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    const lookback = piece && (piece.type === "R" || piece.type === "B") ? 18 : 10;
+    for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - lookback); i -= 1) {
       const prev = state.history[i];
       if (!prev || prev.drop || !prev.from || !prev.to) continue;
       if (prev.from.r === move.to.r && prev.from.c === move.to.c &&
@@ -773,6 +935,8 @@
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
     let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side));
+    const noQuietMajorPromotions = candidateMoves.filter(move => !quietMajorPromotionPenalty(state, move, side));
+    if (noQuietMajorPromotions.length) candidateMoves = noQuietMajorPromotions;
     if (state.history.length < 34) {
       const nonDrops = candidateMoves.filter(move => !move.drop);
       if (nonDrops.length) candidateMoves = nonDrops;
@@ -933,6 +1097,8 @@
     if (exchange.hanging && !exchange.check && !exchange.mateThreat) score -= (exchange.immediateLoss - exchange.captureGain) * (level >= 8 ? 1.15 : 0.75);
     if (move.promote) score += 130;
     score += strategy;
+    score += attackMomentumBonus(state, move, side) * (level >= 8 ? 1.15 : 0.85);
+    score -= quietMajorPromotionPenalty(state, move, side) * (level >= 8 ? 1.1 : 0.8);
     score -= risk * cfg.danger;
     if (window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side))) score += 190;
     if (!cfg.mobile && window.ShogiRules.isCheckmate(state, window.ShogiBoard.opponent(side))) score += MATE / 2;
@@ -1007,6 +1173,48 @@
       : [];
     if (level >= 1 && bookMoves.length) {
       if (cfg.mobile && state.history.length < 34) {
+        const scoredBook = bookMoves.slice(0, 8).map(item => {
+          const risk = fastShapeRisk(state, item.move, state.turn);
+          return Object.assign({}, item, {
+            rawScore: item.score,
+            score: item.score + cheapOrderingScore(state, item.move, null) * 0.18 - risk * 900,
+            risk,
+            depth: 1,
+            nodes: moves.length,
+            pv: [item.move]
+          });
+        });
+        const safeBook = scoredBook
+          .filter(item => item.risk < 420 + level * 135)
+          .sort((a, b) => b.score - a.score);
+        const fill = moves.slice(0, 24)
+          .filter(move => !safeBook.some(item => moveKey(item.move) === moveKey(move)))
+          .map(move => {
+            const risk = fastShapeRisk(state, move, state.turn);
+            return {
+              move,
+              score: cheapOrderingScore(state, move, null) - risk * 900,
+              risk,
+              depth: 1,
+              nodes: moves.length,
+              pv: [move]
+            };
+          })
+          .filter(item => item.risk < 520 + level * 150)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, Math.max(0, 3 - safeBook.length));
+        const safeCandidates = safeBook.concat(fill).sort((a, b) => b.score - a.score).slice(0, 3)
+          .map((item, index) => Object.assign({}, item, {
+            selected: index === 0,
+            weight: index === 0 ? 1 : 0,
+            debug: {
+              aiScore: Math.round(item.score),
+              rawScore: Math.round(item.rawScore || item.score),
+              risk: Math.round(item.risk || 0),
+              reason: "opening-shape-safe"
+            }
+          }));
+        if (safeCandidates.length) return { bestMove: safeCandidates[0].move || fallbackMove, candidates: safeCandidates, nodes: moves.length, depth: 1 };
         const candidates = bookMoves.slice(0, 3).map((item, index) => Object.assign({}, item, {
           score: item.score,
           depth: 1,

@@ -55,6 +55,34 @@ function kingSquare(state, side) {
   return null;
 }
 
+function distance(a, b) {
+  if (!a || !b) return 9;
+  return Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+}
+
+function attacksKingZoneFrom(state, square, side, enemyKing) {
+  const piece = state.board[square.r][square.c];
+  if (!piece || piece.owner !== side || piece.type === "K") return 0;
+  let count = 0;
+  for (const pseudo of context.ShogiRules.pseudoPieceMoves(state, square.r, square.c, true)) {
+    const d = distance(pseudo.to, enemyKing);
+    if (d <= 1) count += 3;
+    else if (d <= 2) count += 1;
+  }
+  return count;
+}
+
+function isRecentReverse(state, move, lookback) {
+  if (!move || move.drop || move.capture || !move.from) return false;
+  for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - lookback); i -= 1) {
+    const prev = state.history[i];
+    if (!prev || prev.drop || !prev.from || !prev.to) continue;
+    if (prev.from.r === move.to.r && prev.from.c === move.to.c &&
+        prev.to.r === move.from.r && prev.to.c === move.from.c) return true;
+  }
+  return false;
+}
+
 function hasCastleProgress(state, side) {
   const king = kingSquare(state, side);
   if (!king) return false;
@@ -87,8 +115,22 @@ function issueForMove(state, move) {
     if (ply < 30 && (p.type === "R" || p.type === "B") && after >= 5 && !move.capture) {
       return { severity: 4, type: "early-major-sortie", text: `${sideName(side)} ${moveUsi}: 序盤の大駒単独進出` };
     }
-    if (ply < 38 && move.promote && (p.type === "R" || p.type === "B") && !move.capture) {
+    if (ply < 30 && move.promote && (p.type === "R" || p.type === "B") && !move.capture) {
       return { severity: 3, type: "empty-major-promotion", text: `${sideName(side)} ${moveUsi}: 早すぎる空成り` };
+    }
+    if (ply >= 24 && ply < 70 && (p.type === "R" || p.type === "B") && isRecentReverse(state, move, 18)) {
+      return { severity: 3, type: "major-shuffle", text: `${sideName(side)} ${moveUsi}: repeated major-piece shuffle` };
+    }
+    if (ply >= 30 && ply < 70 && (p.type === "R" || p.type === "B") && !move.capture && !move.promote) {
+      const enemy = context.ShogiBoard.opponent(side);
+      const enemyKing = kingSquare(state, enemy);
+      const beforeDist = distance(move.from, enemyKing);
+      const next = context.ShogiBoard.applyMove(state, move);
+      const afterDist = distance(move.to, enemyKing);
+      const pressure = attacksKingZoneFrom(next, move.to, side, enemyKing);
+      if (afterDist >= beforeDist && pressure === 0) {
+        return { severity: 3, type: "passive-major", text: `${sideName(side)} ${moveUsi}: passive major-piece move` };
+      }
     }
     if (ply < 24 && p.type === "P" && !move.capture && after >= 3) {
       const enemy = context.ShogiBoard.opponent(side);
@@ -115,7 +157,10 @@ function runGame(gameIndex) {
   const moves = [];
   const issues = [];
   const timings = [];
+  const castleReached = { b: false, w: false };
   for (let ply = 0; ply < 60; ply += 1) {
+    castleReached.b = castleReached.b || hasCastleProgress(state, "b");
+    castleReached.w = castleReached.w || hasCastleProgress(state, "w");
     const legal = context.ShogiRules.legalMoves(state, state.turn);
     if (!legal.length) break;
     const profile = state.aiProfile[state.turn];
@@ -138,6 +183,8 @@ function runGame(gameIndex) {
     moves.push({ ply: ply + 1, side: state.turn, move: usi(move), style: profile.openingStyle, elapsed });
     state = context.ShogiBoard.applyMove(state, cloneMove(move));
   }
+  castleReached.b = castleReached.b || hasCastleProgress(state, "b");
+  castleReached.w = castleReached.w || hasCastleProgress(state, "w");
   return {
     game: gameIndex + 1,
     bStyle: state.aiProfile.b.openingStyle,
@@ -145,8 +192,8 @@ function runGame(gameIndex) {
     moves,
     issues,
     castle: {
-      b: hasCastleProgress(state, "b"),
-      w: hasCastleProgress(state, "w")
+      b: castleReached.b,
+      w: castleReached.w
     },
     maxMs: Math.max(...timings)
   };
@@ -174,6 +221,7 @@ console.log(JSON.stringify({
     game: game.game,
     styles: `${game.bStyle}/${game.wStyle}`,
     first24: game.moves.slice(0, 24).map(item => item.move).join(" "),
+    moves: game.moves.map(item => item.move).join(" "),
     issues: game.issues,
     castle: game.castle,
     maxMs: game.maxMs

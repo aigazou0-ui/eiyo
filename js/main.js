@@ -47,9 +47,9 @@
       openings: [["yagura", 3], ["gangi", 3], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
     },
     5: {
-      personalities: [["standard", 4], ["defense", 2], ["attack", 2], ["varied", 1], ["stable", 1]],
-      randomness: [["normal", 4], ["low", 3], ["high", 1]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
+      personalities: [["stable", 5], ["standard", 4], ["defense", 1], ["attack", 1]],
+      randomness: [["low", 7], ["normal", 1]],
+      openings: [["yagura", 5], ["gangi", 5], ["static-rapid", 2], ["right-king", 1]]
     },
     6: {
       personalities: [["standard", 4], ["stable", 2], ["defense", 2], ["attack", 1], ["varied", 1]],

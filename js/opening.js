@@ -195,8 +195,10 @@
   }
 
   function isRecentReverseMove(state, move) {
-    if (!move || move.drop || move.capture || !move.from || state.history.length > 36) return false;
-    const lookback = state.history.slice(Math.max(0, state.history.length - 10));
+    if (!move || move.drop || move.capture || !move.from || state.history.length > 72) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    const count = piece && (piece.type === "R" || piece.type === "B") ? 16 : 10;
+    const lookback = state.history.slice(Math.max(0, state.history.length - count));
     return lookback.some(prev => {
       if (!prev || prev.drop || !prev.from || !prev.to) return false;
       return prev.from.r === move.to.r && prev.from.c === move.to.c &&
