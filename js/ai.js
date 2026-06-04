@@ -76,6 +76,13 @@
     return moves.find(move => moveKey(move) === key) || null;
   }
 
+  function openingPriorBonus(bookScore, ply) {
+    if (!bookScore || ply > 34) return 0;
+    const strength = Math.max(0, Math.min(1, (bookScore - 500000) / 450000));
+    const scale = ply < 16 ? 650 : ply < 28 ? 420 : 220;
+    return Math.round(strength * scale);
+  }
+
   const HASH_TOKEN_CACHE = new Map();
 
   function tokenHash(token) {
@@ -226,12 +233,14 @@
   }
 
   function earlyMajorPieceSortiePenalty(state, move, side) {
-    if (!move || move.drop || move.capture || state.history.length > 42) return 0;
+    if (!move || move.drop || state.history.length > 42) return 0;
     const piece = state.board[move.from.r][move.from.c];
     if (!piece || (piece.type !== "R" && piece.type !== "B")) return 0;
     const homeRank = side === "b" ? 8 : 0;
     const advanced = advancedRank(side, move.to);
     let penalty = 0;
+    if (advanced >= 5 && state.history.length < 34) penalty += move.capture ? 780 : 520;
+    if (move.promote && advanced >= 6 && state.history.length < 36) penalty += move.capture ? 620 : 900;
     if (piece.type === "B" && Math.abs(move.from.r - homeRank) <= 1 && advanced < 5) penalty += 360;
     if (piece.type === "R" && Math.abs(move.to.c - move.from.c) >= 2 && state.history.length < 34) penalty += 420;
     const undo = window.ShogiBoard.makeMove(state, move);
@@ -869,7 +878,7 @@
 
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 5 && ply < 42) score -= move.capture ? 360 : 1100;
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 6 && ply < 52) score -= move.capture ? 420 : 1400;
-      if ((p.type === "R" || p.type === "B") && !move.capture) score -= earlyMajorPieceSortiePenalty(state, move, side);
+      if (p.type === "R" || p.type === "B") score -= earlyMajorPieceSortiePenalty(state, move, side) * (move.capture ? 0.55 : 1);
       if (p.type === "R" || p.type === "B") score += majorEscapeBonus(state, move, side);
       if (p.type !== "P" && p.type !== "K" && advancedAfter >= 6 && ply < 24 && !move.capture) score -= 420;
     }
@@ -1185,9 +1194,30 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
-    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 22 && (moves.length > 40 || state.history.length >= 24)) {
+    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 20 && (moves.length > 34 || state.history.length >= 24)) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
+    }
+
+    const profile = state.aiProfile && state.aiProfile[state.turn];
+    const bookMoves = window.ShogiOpening
+      ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
+      : [];
+    if (level >= 1 && bookMoves.length && !cfg.deepThinking && cfg.mobile && state.history.length < 28) {
+      const candidates = bookMoves.slice(0, 3).map((item, index) => Object.assign({}, item, {
+        selected: index === 0,
+        weight: index === 0 ? 1 : 0,
+        depth: 1,
+        nodes: moves.length,
+        pv: [item.move],
+        debug: {
+          aiScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          rawScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
+          risk: 0,
+          reason: "opening-book-fast"
+        }
+      }));
+      return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
     }
 
     const handCount = ["b", "w"].reduce((sum, side) => sum + Object.values(state.hands[side] || {}).reduce((a, b) => a + (b || 0), 0), 0);
@@ -1205,15 +1235,11 @@
       };
     }
 
-    if (cfg.mobile && !cfg.deepThinking && (moves.length > 70 || state.history.length >= 30)) {
+    if (cfg.mobile && !cfg.deepThinking && (moves.length > 56 || state.history.length >= 28)) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
 
-    const profile = state.aiProfile && state.aiProfile[state.turn];
-    const bookMoves = window.ShogiOpening
-      ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
-      : [];
     if (level >= 1 && bookMoves.length && !cfg.deepThinking) {
       if (cfg.mobile && !cfg.deepThinking && state.history.length < 34) {
         const scoredBook = bookMoves.slice(0, 8).map(item => {
@@ -1354,13 +1380,15 @@
     let bestMove = null;
     let completedDepth = 0;
     const maxDepth = cfg.depth;
+    const deepBookScores = cfg.deepThinking && bookMoves.length
+      ? new Map(bookMoves.map(item => [moveKey(item.move), item.score]))
+      : null;
 
     for (let depth = cfg.iterative ? 1 : maxDepth; depth <= maxDepth; depth++) {
       ctx.timedOut = false;
       let rootMoves = orderedMoves(state, moves, bestMove ? moveKey(bestMove) : null, 0);
-      if (cfg.deepThinking && bookMoves.length) {
-        const bookScores = new Map(bookMoves.map(item => [moveKey(item.move), item.score]));
-        rootMoves.sort((a, b) => (bookScores.get(moveKey(b)) || 0) - (bookScores.get(moveKey(a)) || 0));
+      if (deepBookScores) {
+        rootMoves.sort((a, b) => (deepBookScores.get(moveKey(b)) || 0) - (deepBookScores.get(moveKey(a)) || 0));
       }
       if (cfg.mobile && depth >= 2) rootMoves = rootMoves.slice(0, cfg.mobileRootLimit || 24);
       const current = [];
@@ -1380,6 +1408,7 @@
           score = MATE - 1;
         } else {
           score -= tacticalRisk(state, move, state.turn, level, cfg) * cfg.danger;
+          if (deepBookScores) score += openingPriorBonus(deepBookScores.get(moveKey(move)), state.history.length);
         }
         current.push({ move, score, depth, nodes: ctx.nodes, pv });
         if (score > alpha) {

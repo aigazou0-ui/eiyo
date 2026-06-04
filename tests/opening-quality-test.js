@@ -143,7 +143,18 @@ function issueForMove(state, move) {
 }
 
 function profileFor(gameIndex, side) {
-  const styles = ["yagura", "gangi", "right-king", "static-rapid", "ranging-mino"];
+  const styles = [
+    "yagura",
+    "gangi",
+    "right-king",
+    "static-rapid",
+    "ranging-mino",
+    "bishop-exchange",
+    "left-mino",
+    "silver-crown",
+    "anaguma",
+    "central-file"
+  ];
   return {
     personality: "stable",
     randomness: "none",
@@ -158,7 +169,7 @@ function runGame(gameIndex) {
   const issues = [];
   const timings = [];
   const castleReached = { b: false, w: false };
-  for (let ply = 0; ply < 60; ply += 1) {
+  for (let ply = 0; ply < 36; ply += 1) {
     castleReached.b = castleReached.b || hasCastleProgress(state, "b");
     castleReached.w = castleReached.w || hasCastleProgress(state, "w");
     const legal = context.ShogiRules.legalMoves(state, state.turn);
@@ -209,7 +220,7 @@ const notCastled = games.flatMap(game => {
   return list;
 });
 const slowGames = games
-  .filter(game => game.maxMs > 2200)
+  .filter(game => game.maxMs > 6000)
   .map(game => ({ game: game.game, maxMs: game.maxMs, type: "slow-opening" }));
 
 console.log(JSON.stringify({

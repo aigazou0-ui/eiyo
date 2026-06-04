@@ -5,8 +5,8 @@ importScripts(
   "board.js?v=75",
   "rules.js?v=80",
   "evaluation.js?v=82",
-  "opening.js?v=83",
-  "ai.js?v=85"
+  "opening.js?v=84",
+  "ai.js?v=86"
 );
 
 self.onmessage = event => {

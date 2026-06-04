@@ -103,18 +103,31 @@
     "right-king": ["right-king"],
     "static-rapid": ["static-rapid", "bishop-exchange", "side-pawn-style"],
     "ranging-mino": ["fourth-file-mino", "nakabisha-mino"],
+    "bishop-exchange": ["bishop-exchange"],
+    "side-pawn": [],
+    "left-mino": ["static-rapid", "bishop-exchange"],
+    "silver-crown": ["yagura", "right-king"],
+    anaguma: ["fourth-file-mino", "nakabisha-mino"],
+    "quick-ishida": [],
+    "central-file": [],
     balanced: ["yagura", "gangi", "right-king"],
-    static: ["yagura", "gangi", "bishop-exchange"],
+    static: ["yagura", "gangi", "bishop-exchange", "side-pawn-style"],
     ranging: ["fourth-file-mino", "nakabisha-mino"],
     defensive: ["yagura", "gangi", "right-king"],
-    attacking: ["static-rapid", "bishop-exchange", "fourth-file-mino", "nakabisha-mino"],
-    varied: ["yagura", "gangi", "bishop-exchange", "fourth-file-mino", "nakabisha-mino", "right-king", "static-rapid"]
+    attacking: ["static-rapid", "bishop-exchange", "side-pawn-style", "fourth-file-mino", "nakabisha-mino"],
+    varied: ["yagura", "gangi", "bishop-exchange", "side-pawn-style", "fourth-file-mino", "nakabisha-mino", "right-king", "static-rapid"]
   };
 
   const STYLE_ALIASES = {
     rightKing: "right-king",
     staticRapid: "static-rapid",
-    rangingMino: "ranging-mino"
+    rangingMino: "ranging-mino",
+    bishopExchange: "bishop-exchange",
+    sidePawn: "side-pawn",
+    leftMino: "left-mino",
+    silverCrown: "silver-crown",
+    quickIshida: "quick-ishida",
+    centralFile: "central-file"
   };
 
   const POLICY_MOVES = {
@@ -137,6 +150,34 @@
     "ranging-mino": {
       b: ["7g7f", "6h6f", "5h5f", "7i6h", "6i7h", "4i3h", "5i4h", "4h3h", "3h2h", "3i2h", "1g1f", "9g9f"],
       w: ["3c3d", "4b4d", "5b5d", "3a4b", "4a3b", "6a7b", "5a6b", "6b7b", "7b8b", "7a8b", "1c1d", "9c9d"]
+    },
+    "bishop-exchange": {
+      b: ["7g7f", "2g2f", "8h2b+", "3i4h", "4i5h", "6i7h", "7i6h", "5i6h", "4h4g", "2i3g", "1g1f", "9g9f"],
+      w: ["3c3d", "8c8d", "2b8h+", "7a6b", "6a5b", "4a3b", "5a4b", "3a2b", "6b6c", "8a7c", "1c1d", "9c9d"]
+    },
+    "side-pawn": {
+      b: ["2g2f", "7g7f", "2f2e", "7i7h", "3i3h", "5i6h", "4i4h", "8g8f", "2i3g", "4h4g", "1g1f", "9g9f"],
+      w: ["8c8d", "3c3d", "8d8e", "7a7b", "4a3b", "5a4b", "6a5b", "2c2d", "8a7c", "7b8c", "1c1d", "9c9d"]
+    },
+    "left-mino": {
+      b: ["2g2f", "7g7f", "3i4h", "4h5g", "4i5h", "5i6h", "6i7h", "7i6h", "5h6g", "6h7g", "1g1f", "9g9f"],
+      w: ["8c8d", "3c3d", "7a6b", "6a5b", "5a6b", "6b7b", "7b8b", "4a3b", "3a4b", "6c6d", "1c1d", "9c9d"]
+    },
+    "silver-crown": {
+      b: ["7g7f", "2g2f", "3i4h", "4h5g", "4i5h", "5i6h", "6i7h", "7i6h", "5h6g", "6h7g", "7h8h", "8h7h"],
+      w: ["3c3d", "8c8d", "7a6b", "6a5b", "5a6b", "6b7b", "7b8b", "4a3b", "3a4b", "5c5d", "4b5c", "5c6d"]
+    },
+    anaguma: {
+      b: ["7g7f", "6h6f", "5h5f", "4i3h", "5i4h", "4h3h", "3h2h", "2h1h", "1i2h", "2h1i", "3i2h", "2h3i"],
+      w: ["3c3d", "4b4d", "5b5d", "6a7b", "5a6b", "6b7b", "7b8b", "8b9b", "9a8b", "8b9a", "7a8b", "8b7a"]
+    },
+    "quick-ishida": {
+      b: ["7g7f", "6h7h", "7f7e", "7h7f", "7i6h", "6i7h", "4i3h", "5i4h", "3h2h", "1g1f", "9g9f"],
+      w: ["3c3d", "4b3b", "3d3e", "3b3d", "3a4b", "4a3b", "6a7b", "5a4b", "7b8b", "1c1d", "9c9d"]
+    },
+    "central-file": {
+      b: ["7g7f", "5h5f", "5g5f", "5i4h", "4h3h", "3h2h", "3i2h", "6i7h", "7i6h", "5f5e", "1g1f", "9g9f"],
+      w: ["3c3d", "5b5d", "5c5d", "5a4b", "4b3b", "3b2b", "7a6b", "4a3b", "6a5b", "5d5e", "1c1d", "9c9d"]
     }
   };
 
@@ -238,6 +279,7 @@
       else if (id === "fourth-file-mino" || id === "nakabisha-mino") tags.push("ranging-mino");
       else if (POLICY_MOVES[id]) tags.push(id);
     }
+    if (POLICY_MOVES[normalized]) tags.push(normalized);
     return Array.from(new Set(tags));
   }
 

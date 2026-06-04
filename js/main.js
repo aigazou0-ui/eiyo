@@ -29,52 +29,52 @@
     1: {
       personalities: [["varied", 4], ["attack", 3], ["standard", 2], ["defense", 1]],
       randomness: [["high", 5], ["normal", 3], ["low", 1]],
-      openings: [["yagura", 2], ["gangi", 2], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
+      openings: [["yagura", 2], ["gangi", 2], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2], ["central-file", 1]]
     },
     2: {
       personalities: [["varied", 3], ["attack", 3], ["standard", 3], ["defense", 1]],
       randomness: [["high", 3], ["normal", 4], ["low", 1]],
-      openings: [["yagura", 2], ["gangi", 2], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
+      openings: [["yagura", 2], ["gangi", 2], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2], ["bishop-exchange", 1], ["central-file", 1]]
     },
     3: {
       personalities: [["standard", 4], ["varied", 3], ["attack", 2], ["defense", 1]],
       randomness: [["normal", 5], ["high", 2], ["low", 1]],
-      openings: [["yagura", 3], ["gangi", 3], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
+      openings: [["yagura", 3], ["gangi", 3], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2], ["bishop-exchange", 1], ["left-mino", 1], ["central-file", 1]]
     },
     4: {
       personalities: [["standard", 4], ["varied", 2], ["attack", 2], ["defense", 2]],
       randomness: [["normal", 5], ["low", 2], ["high", 1]],
-      openings: [["yagura", 3], ["gangi", 3], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2]]
+      openings: [["yagura", 3], ["gangi", 3], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 2], ["bishop-exchange", 1], ["left-mino", 1], ["silver-crown", 1]]
     },
     5: {
       personalities: [["stable", 5], ["standard", 4], ["defense", 1], ["attack", 1]],
       randomness: [["low", 7], ["normal", 1]],
-      openings: [["yagura", 5], ["gangi", 5], ["static-rapid", 2], ["right-king", 1]]
+      openings: [["yagura", 5], ["gangi", 5], ["bishop-exchange", 3], ["left-mino", 2], ["silver-crown", 2], ["static-rapid", 2], ["right-king", 1]]
     },
     6: {
       personalities: [["standard", 4], ["stable", 2], ["defense", 2], ["attack", 1], ["varied", 1]],
       randomness: [["low", 4], ["normal", 3], ["high", 1]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1]]
+      openings: [["yagura", 4], ["gangi", 4], ["bishop-exchange", 3], ["left-mino", 2], ["silver-crown", 2], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1], ["anaguma", 1]]
     },
     7: {
       personalities: [["standard", 4], ["stable", 3], ["defense", 2], ["attack", 1]],
       randomness: [["low", 5], ["normal", 3]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1]]
+      openings: [["yagura", 4], ["gangi", 4], ["bishop-exchange", 3], ["left-mino", 3], ["silver-crown", 2], ["right-king", 2], ["static-rapid", 2], ["anaguma", 1], ["ranging-mino", 1]]
     },
     8: {
       personalities: [["stable", 4], ["standard", 4], ["defense", 1], ["attack", 1]],
       randomness: [["low", 5], ["normal", 2]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1]]
+      openings: [["yagura", 4], ["gangi", 4], ["bishop-exchange", 3], ["left-mino", 3], ["silver-crown", 3], ["right-king", 2], ["static-rapid", 2], ["anaguma", 1], ["central-file", 1]]
     },
     9: {
       personalities: [["stable", 5], ["standard", 4], ["defense", 1]],
       randomness: [["low", 6], ["normal", 1]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1]]
+      openings: [["yagura", 4], ["gangi", 4], ["bishop-exchange", 3], ["left-mino", 3], ["silver-crown", 3], ["right-king", 2], ["static-rapid", 2], ["anaguma", 2], ["central-file", 1]]
     },
     10: {
       personalities: [["stable", 5], ["standard", 4], ["defense", 1]],
       randomness: [["low", 7], ["normal", 1]],
-      openings: [["yagura", 4], ["gangi", 4], ["right-king", 2], ["static-rapid", 2], ["ranging-mino", 1]]
+      openings: [["yagura", 4], ["gangi", 4], ["bishop-exchange", 3], ["left-mino", 3], ["silver-crown", 3], ["right-king", 2], ["static-rapid", 2], ["anaguma", 2], ["central-file", 1]]
     }
   };
 
@@ -390,18 +390,96 @@
     let randomness = weightedPick(table.randomness);
     let openingStyle = weightedPick(table.openings);
 
-    if (personality === "attack" && Math.random() < 0.55) openingStyle = weightedPick([["static-rapid", 3], ["ranging-mino", 2], ["right-king", 1]]);
-    if (personality === "defense" && Math.random() < 0.6) openingStyle = weightedPick([["yagura", 3], ["gangi", 3], ["right-king", 2]]);
-    if (personality === "varied" && Math.random() < 0.6) openingStyle = weightedPick([["right-king", 2], ["ranging-mino", 2], ["static-rapid", 2], ["gangi", 1], ["yagura", 1]]);
+    if (personality === "attack" && Math.random() < 0.55) openingStyle = weightedPick([["static-rapid", 3], ["bishop-exchange", 2], ["ranging-mino", 2], ["central-file", 1], ["right-king", 1]]);
+    if (personality === "defense" && Math.random() < 0.6) openingStyle = weightedPick([["yagura", 3], ["gangi", 3], ["left-mino", 2], ["silver-crown", 2], ["right-king", 2], ["anaguma", 1]]);
+    if (personality === "varied" && Math.random() < 0.6) openingStyle = weightedPick([["right-king", 2], ["ranging-mino", 2], ["central-file", 1], ["static-rapid", 2], ["bishop-exchange", 1], ["gangi", 1], ["yagura", 1]]);
     if (personality === "stable" && randomness === "normal" && lv >= 8 && Math.random() < 0.65) randomness = "low";
 
-    return { personality, randomness, openingStyle };
+    return { personality, randomness, openingStyle, baseOpeningStyle: openingStyle, responseKey: "" };
+  }
+
+  function moveSideAt(index) {
+    return index % 2 === 0 ? "b" : "w";
+  }
+
+  function shogiFile(pos) {
+    return 9 - pos.c;
+  }
+
+  function playerOpeningSignal(targetSide) {
+    if (!state || !state.history) return { kind: "unknown", confidence: 0 };
+    let replay = window.ShogiBoard.newState();
+    const signal = { rookPawn: 0, bishopPawn: 0, centerPawn: 0, rangingRook: 0, kingMove: 0, castleGoldSilver: 0, earlyAttack: 0 };
+    for (let i = 0; i < Math.min(state.history.length, 24); i++) {
+      const move = state.history[i];
+      const mover = moveSideAt(i);
+      if (mover === targetSide && move && !move.drop && move.from && move.to) {
+        const moving = replay.board[move.from.r][move.from.c];
+        const fromFile = shogiFile(move.from);
+        const toFile = shogiFile(move.to);
+        if (moving && moving.type === "P") {
+          if ((targetSide === "b" && fromFile === 2) || (targetSide === "w" && fromFile === 8)) signal.rookPawn++;
+          if ((targetSide === "b" && fromFile === 7) || (targetSide === "w" && fromFile === 3)) signal.bishopPawn++;
+          if (fromFile === 5) signal.centerPawn++;
+          const advanced = targetSide === "b" ? move.to.r < move.from.r : move.to.r > move.from.r;
+          if (advanced && i < 12 && (fromFile === 2 || fromFile === 8 || fromFile === 5)) signal.earlyAttack++;
+        }
+        if (moving && moving.type === "R" && i < 18) {
+          const rangingFile = targetSide === "b" ? toFile >= 4 && toFile <= 7 : toFile >= 3 && toFile <= 6;
+          if (rangingFile) signal.rangingRook += 3;
+        }
+        if (moving && moving.type === "K" && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) signal.kingMove += 2;
+        if (moving && (moving.type === "G" || moving.type === "S") && i < 20) signal.castleGoldSilver++;
+      }
+      replay = window.ShogiBoard.applyMove(replay, move);
+    }
+    if (signal.rangingRook || signal.centerPawn >= 2) return { kind: "ranging", confidence: 3 + signal.rangingRook + signal.centerPawn };
+    if (signal.rookPawn >= 2 && signal.bishopPawn >= 1 && signal.earlyAttack >= 2) return { kind: "static-fast", confidence: 3 };
+    if (signal.kingMove >= 2 || signal.castleGoldSilver >= 2) return { kind: "slow-castle", confidence: 2 + signal.kingMove + signal.castleGoldSilver };
+    if (signal.rookPawn || signal.bishopPawn) return { kind: "static", confidence: 1 + signal.rookPawn + signal.bishopPawn };
+    return { kind: "unknown", confidence: 0 };
+  }
+
+  function responseOpeningsFor(signal, profile) {
+    const personality = profile && profile.personality;
+    if (signal.kind === "ranging") {
+      const list = [["left-mino", 4], ["silver-crown", 3], ["anaguma", 2], ["static-rapid", 1], ["right-king", 1]];
+      if (personality === "attack") list.push(["bishop-exchange", 1]);
+      if (personality === "defense" || personality === "stable") list.push(["anaguma", 2], ["silver-crown", 1]);
+      return list;
+    }
+    if (signal.kind === "static-fast") {
+      const list = [["bishop-exchange", 4], ["gangi", 3], ["yagura", 3], ["static-rapid", 2], ["left-mino", 1]];
+      if (personality === "defense" || personality === "stable") list.push(["silver-crown", 2]);
+      return list;
+    }
+    if (signal.kind === "slow-castle") {
+      const list = [["gangi", 4], ["yagura", 4], ["right-king", 3], ["bishop-exchange", 2], ["static-rapid", 1]];
+      if (personality === "attack") list.push(["bishop-exchange", 2], ["static-rapid", 2]);
+      return list;
+    }
+    if (signal.kind === "static") return [["yagura", 3], ["gangi", 3], ["bishop-exchange", 2], ["right-king", 2], ["left-mino", 1]];
+    return null;
+  }
+
+  function adaptCpuProfileToOpponent(profile) {
+    if (!profile || !state || state.history.length >= 28) return profile;
+    const signal = playerOpeningSignal(playerSide);
+    const responses = signal.confidence >= 2 ? responseOpeningsFor(signal, profile) : null;
+    const key = responses ? `${signal.kind}:${Math.min(5, signal.confidence)}:${profile.personality}` : "base";
+    if (profile.responseKey !== key) {
+      profile.baseOpeningStyle = profile.baseOpeningStyle || profile.openingStyle;
+      profile.openingStyle = responses ? weightedPick(responses) : profile.baseOpeningStyle;
+      profile.responseKey = key;
+      cachedCandidateKey = "";
+    }
+    return profile;
   }
 
   function currentCpuProfile() {
-    if (state && state.aiProfile && state.aiProfile[cpuSide]) return state.aiProfile[cpuSide];
+    if (state && state.aiProfile && state.aiProfile[cpuSide]) return adaptCpuProfileToOpponent(state.aiProfile[cpuSide]);
     if (!cpuProfile) cpuProfile = createCpuProfile(getLevel());
-    return cpuProfile;
+    return adaptCpuProfileToOpponent(cpuProfile);
   }
 
   function isMobileAiMode() {
@@ -985,7 +1063,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=82");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=83");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;
