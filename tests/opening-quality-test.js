@@ -38,6 +38,34 @@ function cloneMove(move) {
   return JSON.parse(JSON.stringify(move));
 }
 
+function moveKey(move) {
+  if (!move) return "";
+  if (move.drop) return `D${move.piece}${move.to.r}${move.to.c}`;
+  return `${move.from.r}${move.from.c}${move.to.r}${move.to.c}${move.promote ? "+" : ""}`;
+}
+
+function usiSquare(text) {
+  return { r: RANKS.indexOf(text[1]), c: FILES.indexOf(text[0]) };
+}
+
+function moveFromUsi(text) {
+  if (text[1] === "*") return { drop: true, piece: text[0], to: usiSquare(text.slice(2, 4)) };
+  return {
+    from: usiSquare(text.slice(0, 2)),
+    to: usiSquare(text.slice(2, 4)),
+    promote: text.endsWith("+")
+  };
+}
+
+function applyUsi(state, text) {
+  const wanted = moveFromUsi(text);
+  const key = moveKey(wanted);
+  const legal = context.ShogiRules.legalMoves(state, state.turn);
+  const found = legal.find(move => moveKey(move) === key);
+  if (!found) throw new Error(`illegal test move ${text}`);
+  return context.ShogiBoard.applyMove(state, cloneMove(found));
+}
+
 function sideName(side) {
   return side === "b" ? "先手" : "後手";
 }
@@ -221,6 +249,22 @@ function runGame(gameIndex) {
 }
 
 const games = Array.from({ length: 10 }, (_, i) => runGame(i));
+let bishopDropRegression = context.ShogiBoard.newState();
+[
+  "7g7f", "8c8d", "2g2f", "3c3d", "8h2b+", "3a2b"
+].forEach(text => {
+  bishopDropRegression = applyUsi(bishopDropRegression, text);
+});
+const bishopDropResult = context.ShogiAI.chooseMoveWithRandomness(bishopDropRegression, 10, {
+  mobile: true,
+  personality: "stable",
+  randomness: "none",
+  openingStyle: "central-file"
+});
+const bishopDropMove = usi(bishopDropResult.bestMove);
+const bishopDropIssue = /^[BR]\*/.test(bishopDropMove)
+  ? [{ game: "regression", type: "early-major-drop-choice", move: bishopDropMove }]
+  : [];
 const severe = games.flatMap(game => game.issues.map(issue => Object.assign({ game: game.game }, issue)))
   .filter(issue => issue.severity >= 3);
 const notCastled = games.flatMap(game => {
@@ -235,7 +279,7 @@ const slowGames = games
 
 console.log(JSON.stringify({
   ok: severe.length === 0 && notCastled.length === 0 && slowGames.length === 0,
-  severe,
+  severe: severe.concat(bishopDropIssue),
   notCastled,
   slowGames,
   summaries: games.map(game => ({
@@ -249,4 +293,4 @@ console.log(JSON.stringify({
   }))
 }, null, 2));
 
-if (severe.length || notCastled.length || slowGames.length) process.exitCode = 1;
+if (severe.length || bishopDropIssue.length || notCastled.length || slowGames.length) process.exitCode = 1;

@@ -230,6 +230,21 @@
     return penalty;
   }
 
+  function forbiddenEarlyMajorDrop(state, move, side) {
+    if (!move || !move.drop || (move.piece !== "B" && move.piece !== "R")) return false;
+    if (window.ShogiRules.inCheck(state, side)) return false;
+    if (state.history.length < 30) return true;
+    if (state.history.length >= 42) return false;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    return !gives && (!defended || pressure <= 0);
+  }
+
   function kingWanderPenalty(state, move, side) {
     if (!move || move.drop) return 0;
     const piece = state.board[move.from.r][move.from.c];
@@ -1182,7 +1197,7 @@
 
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
-    let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side));
+    let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side) && !forbiddenEarlyMajorDrop(state, move, side));
     if (!window.ShogiRules.inCheck(state, side) && state.history.length < 44) {
       const noKingExposure = candidateMoves.filter(move => {
         if (move.drop || !move.from) return true;
@@ -1409,7 +1424,9 @@
   function searchRoot(state, level, options = {}) {
     const cfg = config(level, options);
     const rootDeadline = performance.now() + cfg.time;
-    const moves = window.ShogiRules.legalMoves(state, state.turn);
+    const rawMoves = window.ShogiRules.legalMoves(state, state.turn);
+    let moves = rawMoves.filter(move => !forbiddenEarlyMajorDrop(state, move, state.turn));
+    if (!moves.length) moves = rawMoves;
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
