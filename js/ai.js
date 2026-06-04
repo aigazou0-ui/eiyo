@@ -429,6 +429,72 @@
     return Math.round(score);
   }
 
+  function centralBreakthroughRisk(state, move, side) {
+    if (!move || move.drop || !move.to || state.history.length < 18 || state.history.length > 70) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type === "K") return 0;
+    const centralFile = move.to.c === 4 || (move.from && move.from.c === 4);
+    if (!centralFile) return 0;
+    const advanced = advancedRank(side, move.to);
+    if (advanced < 3 && !move.capture && !move.promote) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    let sameFilePower = 0;
+    for (let r = 0; r < 9; r++) {
+      const p = state.board[r][4];
+      if (!p || p.owner !== side) continue;
+      if (p.type === "R") sameFilePower += 5;
+      else if (p.type === "B") sameFilePower += 3;
+      else if (p.type === "G" || p.type === "S") sameFilePower += 2;
+      else if (p.type === "P") sameFilePower += 1;
+    }
+    window.ShogiBoard.undoMove(state, undo);
+    if (gives || pressure >= 2 || support >= 5 || sameFilePower >= 6) return 0;
+    let risk = 0;
+    if (piece.type === "P") risk += move.capture ? 180 : 320;
+    else if (piece.type === "S" || piece.type === "G") risk += 240;
+    else if (piece.type === "R" || piece.type === "B") risk += state.history.length < 42 ? 1600 : 760;
+    if (attacked && !defended) risk += 420;
+    else if (attacked > defended) risk += 180;
+    if (sameFilePower <= 2) risk += piece.type === "R" || piece.type === "B" ? 720 : 260;
+    if (support <= 1) risk += piece.type === "R" || piece.type === "B" ? 520 : 220;
+    return risk;
+  }
+
+  function majorSacrificeRisk(state, move, side, exchange) {
+    if (!move || move.drop || !move.from || !move.capture) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || (piece.type !== "R" && piece.type !== "B")) return 0;
+    if (exchange.mateThreat || exchange.check) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const afterPiece = state.board[move.to.r][move.to.c];
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const nearKing = distance(move.to, enemyKing) <= 3;
+    window.ShogiBoard.undoMove(state, undo);
+    const value = basePieceValue(piece);
+    const gain = exchange.captureGain || 0;
+    const loss = Math.max(exchange.immediateLoss || 0, value - gain);
+    if (exchange.see >= -80 && (pressure || support >= 4 || nearKing)) return 0;
+    let risk = Math.max(0, loss - gain * 0.35);
+    if (!nearKing) risk += 420;
+    if (!pressure) risk += 360;
+    if (support < 3) risk += 260;
+    if (attacked && !defended) risk += 260;
+    if (afterPiece && afterPiece.promoted && nearKing) risk -= 240;
+    return Math.max(0, Math.round(risk));
+  }
+
   function quietMajorPromotionPenalty(state, move, side) {
     if (!move || move.drop || !move.promote || move.capture || state.history.length >= 54) return 0;
     const piece = movingPiece(state, move);
@@ -713,6 +779,8 @@
       risk += (exchange.immediateLoss - exchange.captureGain) * levelScale;
       if (piece && (piece.type === "R" || piece.type === "B")) risk += 500 + level * 55;
     }
+    risk += majorSacrificeRisk(state, move, side, exchange) * (0.9 + level * 0.08);
+    risk += centralBreakthroughRisk(state, move, side) * (0.75 + level * 0.07);
     if (exchange.see < -80 && !exchange.check && !exchange.mateThreat) {
       risk += Math.abs(exchange.see) * (0.9 + level * 0.12);
       if (piece && (piece.type === "R" || piece.type === "B")) risk += Math.abs(exchange.see) * 0.7;
@@ -1009,6 +1077,7 @@
     if (move.drop && ply < 24) score -= 240;
     if (move.drop && unsupportedDropRisk(state, move, side)) score -= unsupportedDropRisk(state, move, side) * 0.9;
     if (move.drop) score -= earlyMajorDropPenalty(state, move, side) * 1.2;
+    score -= centralBreakthroughRisk(state, move, side) * 0.9;
     if (givesCheck(state, move, side) && ply < 32 && !move.capture) score -= 360;
     return score + momentum - shuffleRisk * 0.75;
   }
@@ -1023,6 +1092,7 @@
       score += 700000 + mvvLva(state, move);
       score += Math.max(-260000, Math.min(260000, exchange.see * 180));
       if (exchange.see < -160) score -= 260000;
+      score -= majorSacrificeRisk(state, move, state.turn, exchange) * 120;
     }
     if (move.promote) score += Math.max(12000, 110000 - quietMajorPromotionPenalty(state, move, state.turn) * 120);
     if (givesCheck(state, move, state.turn)) {
@@ -1051,6 +1121,7 @@
     if (isEarlyBishopHeadPawnPush(state, move, state.turn)) score -= 1000000;
     if (isRecentReverse(state, move)) score -= 260000;
     if (move.promote) score += Math.max(5000, 24000 - quietMajorPromotionPenalty(state, move, state.turn) * 45);
+    score -= centralBreakthroughRisk(state, move, state.turn) * 420;
     if (move.drop) {
       if (move.piece === "G" || move.piece === "S") score += 9000;
       else if (move.piece === "P") score += 1500;
@@ -1137,10 +1208,11 @@
           const undo = window.ShogiBoard.makeMove(state, item.move);
           const positional = evaluateForSide(state, side);
           const middleRisk = middleTransitionReplyRiskFast(state, side, 6);
+          const centralRisk = centralBreakthroughRisk(state, item.move, side);
           const checkBonus = window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side)) ? 45000 : 0;
           window.ShogiBoard.undoMove(state, undo);
           return Object.assign({}, item, {
-            score: item.score + positional * 0.16 + checkBonus - middleRisk * 520
+            score: item.score + positional * 0.16 + checkBonus - middleRisk * 520 - centralRisk * 700
           });
         })
         .sort((a, b) => b.score - a.score)
@@ -1290,6 +1362,7 @@
 
     if (move.capture) score += 180 + captureScore / 8;
     score += exchange.netMaterial * (level >= 8 ? 0.75 : 0.45);
+    score -= majorSacrificeRisk(state, move, side, exchange) * (level >= 8 ? 1.1 : 0.75);
     if (exchange.see < 0 && !exchange.check && !exchange.mateThreat) score += exchange.see * (level >= 8 ? 1.25 : 0.75);
     if (exchange.see > 0 && move.capture) score += exchange.see * (level >= 8 ? 0.35 : 0.2);
     if (exchange.hanging && !exchange.check && !exchange.mateThreat) score -= (exchange.immediateLoss - exchange.captureGain) * (level >= 8 ? 1.15 : 0.75);
