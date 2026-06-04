@@ -216,7 +216,7 @@
   }
 
   function kingWanderPenalty(state, move, side) {
-    if (!move || move.drop || state.history.length < 18) return 0;
+    if (!move || move.drop) return 0;
     const piece = state.board[move.from.r][move.from.c];
     if (!piece || piece.type !== "K") return 0;
     if (window.ShogiRules.inCheck(state, side)) return 0;
@@ -225,7 +225,10 @@
     const toCastle = Math.abs(move.to.c - 4) + Math.abs(move.to.r - home);
     const fromWing = Math.abs(move.from.c - 4);
     const toWing = Math.abs(move.to.c - 4);
-    let penalty = 120;
+    const advanced = advancedRank(side, move.to);
+    let penalty = state.history.length < 18 ? 80 : 120;
+    if (state.history.length < 44 && advanced >= 2) penalty += 7000 + (44 - state.history.length) * 90;
+    if (state.history.length < 28 && advanced >= 1 && toWing > 1) penalty += 420;
     if (state.history.length > 30) penalty += 120;
     if (toWing < fromWing) penalty += 180;
     if (toCastle < fromCastle && fromWing >= 2) penalty += 180;
@@ -870,9 +873,11 @@
 
       if (p.type === "S" && advancedAfter > advancedBefore) score += 190;
       if (p.type === "G" && advancedAfter <= 2 && (move.to.c <= 3 || move.to.c >= 5)) score += 90;
+      if (p.type === "G" && ply < 12 && advancedAfter > advancedBefore && move.from.c === move.to.c && move.to.c >= 3 && move.to.c <= 5) score -= 1600;
       if (p.type === "K") {
         if (ply <= 24 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) score += 210;
         if (ply <= 28 && (move.to.c <= 2 || move.to.c >= 6)) score += 180;
+        if (ply < 44 && advancedAfter >= 2) score -= 9000;
         if (ply > 28 && !window.ShogiRules.inCheck(state, side)) score -= 260;
       }
 
@@ -938,6 +943,7 @@
         if (piece.type === "R" || piece.type === "B") score += move.capture ? 12000 : -4000;
         if (piece.type === "S" || piece.type === "N") score += advanced * 900;
         if (piece.type === "K") score -= 6000;
+        if (piece.type === "K" && state.history.length < 44 && advanced >= 2) score -= 100000;
       }
     }
     score += attackMomentumBonus(state, move, state.turn) * 140;
@@ -1194,11 +1200,6 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
-    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 20 && (moves.length > 34 || state.history.length >= 24)) {
-      const ranked = fastMobileCandidates(state, moves);
-      return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
-    }
-
     const profile = state.aiProfile && state.aiProfile[state.turn];
     const bookMoves = window.ShogiOpening
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
@@ -1218,6 +1219,11 @@
         }
       }));
       return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
+    }
+
+    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 20 && (moves.length > 34 || state.history.length >= 24)) {
+      const ranked = fastMobileCandidates(state, moves);
+      return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
 
     const handCount = ["b", "w"].reduce((sum, side) => sum + Object.values(state.hands[side] || {}).reduce((a, b) => a + (b || 0), 0), 0);
@@ -1430,6 +1436,21 @@
         .sort((a, b) => b.score - a.score)
         .slice(0, 3);
       bestMove = bestCandidates[0].move;
+    }
+
+    if (cfg.deepThinking && bookMoves.length && state.history.length < 20) {
+      const bookCandidates = bookMoves.slice(0, 3).map((item, index) => Object.assign({}, item, {
+        selected: index === 0,
+        depth: completedDepth || item.depth || 1,
+        nodes: ctx.nodes,
+        pv: [item.move]
+      }));
+      return {
+        bestMove: bookCandidates[0].move || bestMove || fallbackMove,
+        candidates: bookCandidates,
+        nodes: ctx.nodes,
+        depth: completedDepth || 1
+      };
     }
 
     bestCandidates.forEach(item => {

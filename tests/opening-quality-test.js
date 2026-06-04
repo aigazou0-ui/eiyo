@@ -138,6 +138,12 @@ function issueForMove(state, move) {
       const exposed = context.ShogiRules.legalMoves(next, enemy).some(reply => !reply.drop && reply.to.r === move.to.r && reply.to.c === move.to.c);
       if (exposed) return { severity: 2, type: "loose-pawn-push", text: `${sideName(side)} ${moveUsi}: 取られやすい歩突き` };
     }
+    if (ply < 44 && p.type === "K" && after >= 2) {
+      return { severity: 4, type: "early-king-exposure", text: `${sideName(side)} ${moveUsi}: early exposed king` };
+    }
+    if (ply < 12 && p.type === "G" && after > before && move.from.c === move.to.c && move.to.c >= 3 && move.to.c <= 5) {
+      return { severity: 3, type: "early-central-gold", text: `${sideName(side)} ${moveUsi}: early central gold push` };
+    }
   }
   return null;
 }
