@@ -264,6 +264,39 @@
     return score;
   }
 
+  function middleHandPressure(state, side, phase, attacks) {
+    if (phase !== "middle") return 0;
+    const enemy = side === "b" ? "w" : "b";
+    const enemyKing = findKing(state, enemy);
+    const ownKing = findKing(state, side);
+    if (!enemyKing || !ownKing) return 0;
+    const hands = state.hands[side] || {};
+    const enemyHands = state.hands[enemy] || {};
+    let attack = 0;
+    let danger = 0;
+    const enemyShield = kingShield(state, enemy);
+    const ownShield = kingShield(state, side);
+    attack += (hands.R || 0) * 95 + (hands.B || 0) * 80;
+    attack += (hands.G || 0) * 62 + (hands.S || 0) * 52 + (hands.N || 0) * 34;
+    attack += Math.min(4, hands.P || 0) * 12;
+    danger += (enemyHands.R || 0) * 115 + (enemyHands.B || 0) * 96;
+    danger += (enemyHands.G || 0) * 76 + (enemyHands.S || 0) * 66 + (enemyHands.N || 0) * 40;
+    danger += Math.min(4, enemyHands.P || 0) * 14;
+    for (let r = Math.max(0, enemyKing.r - 2); r <= Math.min(8, enemyKing.r + 2); r++) {
+      for (let c = Math.max(0, enemyKing.c - 2); c <= Math.min(8, enemyKing.c + 2); c++) {
+        if (attacks[side][r][c]) attack += attacks[side][r][c] * 12;
+      }
+    }
+    for (let r = Math.max(0, ownKing.r - 2); r <= Math.min(8, ownKing.r + 2); r++) {
+      for (let c = Math.max(0, ownKing.c - 2); c <= Math.min(8, ownKing.c + 2); c++) {
+        if (attacks[enemy][r][c]) danger += attacks[enemy][r][c] * 16;
+      }
+    }
+    if (enemyShield < 45) attack *= 1.12;
+    if (ownShield < 45) danger *= 1.16;
+    return Math.round(attack - danger * 0.72);
+  }
+
   function enteringKingScore(state, side, phase, attacks) {
     if (phase !== "endgame") return 0;
     const king = findKing(state, side);
@@ -376,6 +409,7 @@
     const weights = phaseWeights(phase);
     score += (kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks)) * weights.king;
     score += (attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks)) * weights.attack;
+    score += middleHandPressure(state, "b", phase, attacks) - middleHandPressure(state, "w", phase, attacks);
     score += endgamePressure(state, "b", phase, attacks) - endgamePressure(state, "w", phase, attacks);
     score += enteringKingScore(state, "b", phase, attacks) - enteringKingScore(state, "w", phase, attacks);
     score += (activityScore(state, "b", phase) - activityScore(state, "w", phase)) * weights.activity;

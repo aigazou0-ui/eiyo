@@ -514,6 +514,106 @@
     return worst;
   }
 
+  function kingZoneWeakness(state, side) {
+    const king = findKing(state, side);
+    if (!king) return 12;
+    const enemy = window.ShogiBoard.opponent(side);
+    let weakness = 0;
+    for (let r = Math.max(0, king.r - 2); r <= Math.min(8, king.r + 2); r++) {
+      for (let c = Math.max(0, king.c - 2); c <= Math.min(8, king.c + 2); c++) {
+        const dist = Math.abs(r - king.r) + Math.abs(c - king.c);
+        if (dist > 2) continue;
+        const piece = state.board[r][c];
+        if (!piece) weakness += dist <= 1 ? 2 : 1;
+        else if (piece.owner === side && (piece.type === "G" || piece.type === "S" || piece.type === "P")) weakness -= dist <= 1 ? 2 : 1;
+        else if (piece.owner === enemy) weakness += piece.type === "R" || piece.type === "B" ? 5 : 3;
+        if (window.ShogiRules.attacksSquare(state, enemy, { r, c })) weakness += dist <= 1 ? 2 : 1;
+      }
+    }
+    return Math.max(0, weakness);
+  }
+
+  function dropThreatNearKing(state, move, defender) {
+    if (!move || !move.drop) return 0;
+    const king = findKing(state, defender);
+    if (!king) return 0;
+    const dist = distance(move.to, king);
+    if (dist > 3) return 0;
+    const attacker = window.ShogiBoard.opponent(defender);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const gives = window.ShogiRules.inCheck(state, defender);
+    const defended = window.ShogiRules.attacksSquare(state, attacker, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    const base = pieceValueByType(move.piece, false);
+    let threat = Math.max(0, 4 - dist) * 85 + base * 0.22;
+    if (gives) threat += 520;
+    if (defended) threat += 130;
+    if (move.piece === "G" || move.piece === "S") threat += 150;
+    if (move.piece === "R" || move.piece === "B") threat += 220;
+    return threat;
+  }
+
+  function promotionEntryThreat(state, move, defender) {
+    if (!move || move.drop || !move.from) return 0;
+    const attacker = state.board[move.from.r][move.from.c];
+    if (!attacker || attacker.owner === defender || attacker.type === "K") return 0;
+    const advanced = advancedRank(attacker.owner, move.to);
+    let threat = 0;
+    if (move.promote) {
+      threat += attacker.type === "R" || attacker.type === "B" ? 760 : 260;
+      if (distance(move.to, findKing(state, defender)) <= 4) threat += 220;
+    } else if ((attacker.type === "R" || attacker.type === "B") && advanced >= 6) {
+      threat += 420;
+    } else if (advanced >= 5 && (attacker.type === "S" || attacker.type === "N" || attacker.type === "P")) {
+      threat += 120;
+    }
+    if (move.capture) {
+      const target = state.board[move.to.r][move.to.c];
+      if (target && target.owner === defender) threat += basePieceValue(target) * 0.35;
+    }
+    return threat;
+  }
+
+  function middleTransitionReplyRisk(next, side, limit) {
+    const ply = next.history.length;
+    if (ply < 24 || ply > 78) return 0;
+    const replies = orderedMoves(next, window.ShogiRules.legalMoves(next, next.turn), null, 1).slice(0, Math.min(limit, 18));
+    const weakness = kingZoneWeakness(next, side);
+    let worst = 0;
+    for (const reply of replies) {
+      let threat = 0;
+      threat += dropThreatNearKing(next, reply, side);
+      threat += promotionEntryThreat(next, reply, side);
+      if (reply.capture && !reply.drop) {
+        const target = next.board[reply.to.r][reply.to.c];
+        if (target && target.owner === side) threat += basePieceValue(target) * 0.28;
+      }
+      if (threat > 0) {
+        const scaled = threat * (1 + Math.min(10, weakness) * 0.08);
+        worst = Math.max(worst, scaled);
+      }
+    }
+    return Math.round(worst);
+  }
+
+  function middleTransitionReplyRiskFast(next, side, limit) {
+    const ply = next.history.length;
+    if (ply < 24 || ply > 78) return 0;
+    const replies = window.ShogiRules.legalMoves(next, next.turn).slice(0, Math.min(limit, 24));
+    const weakness = kingZoneWeakness(next, side);
+    let worst = 0;
+    for (const reply of replies) {
+      let threat = dropThreatNearKing(next, reply, side);
+      threat += promotionEntryThreat(next, reply, side);
+      if (reply.capture && !reply.drop) {
+        const target = next.board[reply.to.r][reply.to.c];
+        if (target && target.owner === side) threat += basePieceValue(target) * 0.22;
+      }
+      if (threat > 0) worst = Math.max(worst, threat * (1 + Math.min(10, weakness) * 0.06));
+    }
+    return Math.round(worst);
+  }
+
   function exchangeAfterMove(state, move, side) {
     const beforeTarget = !move.drop ? state.board[move.to.r][move.to.c] : null;
     const captureGain = beforeTarget && beforeTarget.owner !== side ? basePieceValue(beforeTarget) : 0;
@@ -587,6 +687,7 @@
     const isCheckMove = exchange.check;
     const undo = window.ShogiBoard.makeMove(state, move);
     let risk = replyCaptureDanger(state, side, cfg.reply || 24);
+    risk += middleTransitionReplyRisk(state, side, cfg.reply || 24) * (0.75 + level * 0.06);
 
     if (window.ShogiRules.isCheckmate(state, side)) risk += MATE;
     if (window.ShogiRules.inCheck(state, side)) risk += 700;
@@ -961,7 +1062,7 @@
         if (piece.type === "R" || piece.type === "B") score += move.capture ? 12000 : -4000;
         if (piece.type === "S" || piece.type === "N") score += advanced * 900;
         if (piece.type === "K") score -= 6000;
-        if (piece.type === "K" && state.history.length < 44 && advanced >= 2) score -= 100000;
+        if (piece.type === "K" && state.history.length < 44 && advanced >= 2) score -= 1000000;
       }
     }
     score += attackMomentumBonus(state, move, state.turn) * 140;
@@ -1011,6 +1112,14 @@
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
     let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side));
+    if (!window.ShogiRules.inCheck(state, side) && state.history.length < 44) {
+      const noKingExposure = candidateMoves.filter(move => {
+        if (move.drop || !move.from) return true;
+        const piece = state.board[move.from.r][move.from.c];
+        return !piece || piece.type !== "K" || advancedRank(side, move.to) < 2;
+      });
+      if (noKingExposure.length) candidateMoves = noKingExposure;
+    }
     const noQuietMajorPromotions = candidateMoves.filter(move => !quietMajorPromotionPenalty(state, move, side));
     if (noQuietMajorPromotions.length) candidateMoves = noQuietMajorPromotions;
     if (state.history.length < 34) {
@@ -1022,7 +1131,20 @@
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(28, moves.length));
     if (state.history.length >= 22 || moves.length > 56) {
-      return ordered.slice(0, 3);
+      return ordered
+        .slice(0, 6)
+        .map(item => {
+          const undo = window.ShogiBoard.makeMove(state, item.move);
+          const positional = evaluateForSide(state, side);
+          const middleRisk = middleTransitionReplyRiskFast(state, side, 6);
+          const checkBonus = window.ShogiRules.inCheck(state, window.ShogiBoard.opponent(side)) ? 45000 : 0;
+          window.ShogiBoard.undoMove(state, undo);
+          return Object.assign({}, item, {
+            score: item.score + positional * 0.16 + checkBonus - middleRisk * 520
+          });
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
     }
     return ordered
       .map((item, index) => {
