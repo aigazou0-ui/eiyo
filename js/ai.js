@@ -41,6 +41,20 @@
       cfg.mobileMateDepth = options.mobileMateDepth || 1;
       cfg.nodeLimit = Math.min(cfg.nodeLimit || 6000, lv >= 9 ? 22000 : lv >= 7 ? 11000 : lv >= 5 ? 4500 : 1600);
     }
+    if (Number.isFinite(options.timeLimit)) cfg.time = Math.max(80, Number(options.timeLimit));
+    if (Number.isFinite(options.depthLimit)) cfg.depth = Math.max(1, Math.min(8, Number(options.depthLimit)));
+    if (Number.isFinite(options.nodeLimit)) cfg.nodeLimit = Math.max(500, Number(options.nodeLimit));
+    if (Number.isFinite(options.rootLimit)) cfg.mobileRootLimit = Math.max(6, Number(options.rootLimit));
+    if (Number.isFinite(options.branchLimit)) cfg.mobileBranchLimit = Math.max(4, Number(options.branchLimit));
+    cfg.deepThinking = !!options.deepThinking;
+    if (cfg.deepThinking) {
+      cfg.iterative = true;
+      cfg.tt = true;
+      cfg.mobileRootLimit = cfg.mobileRootLimit || (lv >= 9 ? 34 : lv >= 5 ? 26 : 18);
+      cfg.mobileBranchLimit = cfg.mobileBranchLimit || (lv >= 9 ? 18 : lv >= 5 ? 14 : 8);
+      cfg.mobileQLimit = Math.max(cfg.mobileQLimit || 0, lv >= 9 ? 10 : 8);
+      cfg.mobileMateDepth = Math.max(cfg.mobileMateDepth || 1, lv >= 9 ? 3 : lv >= 5 ? 1 : 1);
+    }
     return cfg;
   }
 
@@ -1171,7 +1185,7 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
-    if (cfg.mobile && state.history.length >= 22 && (moves.length > 40 || state.history.length >= 24)) {
+    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 22 && (moves.length > 40 || state.history.length >= 24)) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
@@ -1191,7 +1205,7 @@
       };
     }
 
-    if (cfg.mobile && (moves.length > 70 || state.history.length >= 30)) {
+    if (cfg.mobile && !cfg.deepThinking && (moves.length > 70 || state.history.length >= 30)) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }
@@ -1200,8 +1214,8 @@
     const bookMoves = window.ShogiOpening
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
       : [];
-    if (level >= 1 && bookMoves.length) {
-      if (cfg.mobile && state.history.length < 34) {
+    if (level >= 1 && bookMoves.length && !cfg.deepThinking) {
+      if (cfg.mobile && !cfg.deepThinking && state.history.length < 34) {
         const scoredBook = bookMoves.slice(0, 8).map(item => {
           const risk = fastShapeRisk(state, item.move, state.turn);
           return Object.assign({}, item, {
@@ -1260,7 +1274,7 @@
         }));
         return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
       }
-      if (cfg.mobile && state.history.length < 24) {
+      if (cfg.mobile && !cfg.deepThinking && state.history.length < 24) {
         const policyMoves = bookMoves
           .filter(item => item.policy)
           .sort((a, b) => b.score - a.score)
@@ -1344,6 +1358,10 @@
     for (let depth = cfg.iterative ? 1 : maxDepth; depth <= maxDepth; depth++) {
       ctx.timedOut = false;
       let rootMoves = orderedMoves(state, moves, bestMove ? moveKey(bestMove) : null, 0);
+      if (cfg.deepThinking && bookMoves.length) {
+        const bookScores = new Map(bookMoves.map(item => [moveKey(item.move), item.score]));
+        rootMoves.sort((a, b) => (bookScores.get(moveKey(b)) || 0) - (bookScores.get(moveKey(a)) || 0));
+      }
       if (cfg.mobile && depth >= 2) rootMoves = rootMoves.slice(0, cfg.mobileRootLimit || 24);
       const current = [];
       let alpha = -INF;

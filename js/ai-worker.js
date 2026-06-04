@@ -6,20 +6,20 @@ importScripts(
   "rules.js?v=80",
   "evaluation.js?v=82",
   "opening.js?v=83",
-  "ai.js?v=84"
+  "ai.js?v=85"
 );
 
 self.onmessage = event => {
-  const { id, state, level, profile, mobile } = event.data || {};
+  const { id, state, level, profile, mobile, searchOptions } = event.data || {};
   try {
     const searchState = window.ShogiBoard.cloneState(state);
     searchState.aiProfile = Object.assign({}, searchState.aiProfile, { [searchState.turn]: profile });
     const started = performance.now();
-    const result = window.ShogiAI.chooseMoveWithRandomness(searchState, level, {
+    const result = window.ShogiAI.chooseMoveWithRandomness(searchState, level, Object.assign({
       personality: profile && profile.personality,
       randomness: profile && profile.randomness,
       mobile: !!mobile
-    });
+    }, searchOptions || {}));
     const move = window.ShogiAI.ensureLegalMove(searchState, result.bestMove, level);
     self.postMessage({
       id,

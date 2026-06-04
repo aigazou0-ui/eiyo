@@ -416,6 +416,46 @@
     };
   }
 
+  function cpuPhasePlan(ply) {
+    if (ply < 30) return { name: "opening", start: 0, end: 30, share: 0.30 };
+    if (ply < 80) return { name: "middle", start: 30, end: 80, share: 0.50 };
+    return { name: "end", start: 80, end: 100, share: 0.20 };
+  }
+
+  function plannedCpuThinkBudget(level) {
+    updateActiveClock();
+    const ply = state.history.length;
+    const phase = cpuPhasePlan(ply);
+    const phaseCpuMoves = Math.max(1, Math.ceil((phase.end - phase.start) / 2));
+    const phaseMoveSeconds = (INITIAL_CLOCK_SECONDS * phase.share) / phaseCpuMoves;
+    const clocks = ensureClock(state);
+    const remaining = Math.max(1, clocks[cpuSide] || INITIAL_CLOCK_SECONDS);
+    const remainingCpuMoves = Math.max(1, Math.ceil(Math.max(1, 100 - ply) / 2));
+    const clockAverage = Math.max(0.6, (remaining - 12) / remainingCpuMoves);
+    const lv = Math.max(1, Math.min(10, Number(level) || 5));
+    const levelScale = lv >= 9 ? 1.0 : lv >= 5 ? 0.72 : 0.38;
+    const phaseScale = phase.name === "middle" ? 1.08 : phase.name === "end" ? 0.92 : 1.0;
+    let seconds = phaseMoveSeconds * levelScale * phaseScale;
+    seconds = Math.min(seconds, clockAverage * 1.45);
+    if (window.ShogiRules.inCheck(state, cpuSide)) seconds *= 1.25;
+    const legalCount = window.ShogiRules.legalMoves(state, cpuSide).length;
+    if (legalCount <= 12) seconds *= 1.15;
+    const minSeconds = lv >= 9 ? 2.4 : lv >= 5 ? 1.5 : 0.7;
+    const maxSeconds = lv >= 9 ? 13.0 : lv >= 5 ? 9.0 : 4.5;
+    seconds = Math.max(minSeconds, Math.min(maxSeconds, seconds));
+    if (remaining <= 45) seconds = Math.min(seconds, Math.max(0.45, remaining / 14));
+    const timeLimit = Math.round(seconds * 1000);
+    return {
+      phase: phase.name,
+      timeLimit,
+      timeoutMs: timeLimit + 1800,
+      depthLimit: lv >= 9 ? 7 : lv >= 5 ? 5 : 3,
+      nodeLimit: Math.round((lv >= 9 ? 125000 : lv >= 5 ? 70000 : 18000) * Math.max(0.7, seconds / 6)),
+      rootLimit: lv >= 9 ? 38 : lv >= 5 ? 30 : 18,
+      branchLimit: lv >= 9 ? 20 : lv >= 5 ? 15 : 8
+    };
+  }
+
   function emergencyCpuMove(level) {
     const legal = window.ShogiRules.legalMoves(state, state.turn);
     if (!legal.length) return { move: null, candidates: [] };
@@ -892,7 +932,8 @@
         let move = null;
         if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
         if (!move) {
-          const builtInResult = await getBuiltInBestMove(level, profile, token);
+          const budget = plannedCpuThinkBudget(level);
+          const builtInResult = await getBuiltInBestMove(level, profile, token, budget);
           if (token !== cpuSearchToken || state.gameOver || state.turn !== cpuSide) return;
           list = builtInResult.candidates || [];
           move = builtInResult.move;
@@ -935,7 +976,7 @@
     }, 20);
   }
 
-  function getBuiltInBestMove(level, profile, token) {
+  function getBuiltInBestMove(level, profile, token, budget) {
     return new Promise(resolve => {
       if (!window.Worker) {
         const choice = emergencyCpuMove(level);
@@ -944,7 +985,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=81");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=82");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;
@@ -976,11 +1017,21 @@
         const choice = emergencyCpuMove(level);
         resolve({ move: choice.move, candidates: choice.candidates || [], depth: 0, nodes: 0, emergency: true });
       };
-      aiWorker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode() });
+      const searchOptions = budget ? {
+        deepThinking: true,
+        timeLimit: budget.timeLimit,
+        depthLimit: budget.depthLimit,
+        nodeLimit: budget.nodeLimit,
+        rootLimit: budget.rootLimit,
+        branchLimit: budget.branchLimit
+      } : null;
+      aiWorker.postMessage({ id, state: window.ShogiBoard.cloneState(state), level, profile, mobile: isMobileAiMode(), searchOptions });
 
-      const fallbackTimeout = isMobileAiMode()
-        ? (level >= 9 ? 2200 : level >= 5 ? 1200 : 450)
-        : Math.max(2500, 250 + level * 450);
+      const fallbackTimeout = budget
+        ? budget.timeoutMs
+        : isMobileAiMode()
+          ? (level >= 9 ? 2200 : level >= 5 ? 1200 : 450)
+          : Math.max(2500, 250 + level * 450);
       setTimeout(() => {
         if (settled) return;
         if (token !== cpuSearchToken) {
