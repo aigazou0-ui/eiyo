@@ -245,6 +245,36 @@
     return !gives && (!defended || pressure <= 0);
   }
 
+  function forbiddenEarlyKingExposure(state, move, side) {
+    if (!move || move.drop || !move.from || state.history.length >= 44) return false;
+    if (window.ShogiRules.inCheck(state, side)) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || piece.type !== "K") return false;
+    const advanced = advancedRank(side, move.to);
+    if (advanced < 2) return false;
+    const homeRank = side === "b" ? 8 : 0;
+    const fromHomeDistance = Math.abs(move.from.r - homeRank);
+    const toHomeDistance = Math.abs(move.to.r - homeRank);
+    return toHomeDistance > fromHomeDistance;
+  }
+
+  function forbiddenEarlyMajorAdvance(state, move, side) {
+    if (!move || move.drop || !move.from || state.history.length >= 32) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || (piece.type !== "R" && piece.type !== "B")) return false;
+    const advanced = advancedRank(side, move.to);
+    if (advanced < 5) return false;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    window.ShogiBoard.undoMove(state, undo);
+    if (state.history.length < 30) return !gives;
+    return !gives && pressure <= 0 && support < 4;
+  }
+
   function kingWanderPenalty(state, move, side) {
     if (!move || move.drop) return 0;
     const piece = state.board[move.from.r][move.from.c];
@@ -1197,7 +1227,12 @@
 
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
-    let candidateMoves = moves.filter(move => !isEarlyBishopHeadPawnPush(state, move, side) && !forbiddenEarlyMajorDrop(state, move, side));
+    let candidateMoves = moves.filter(move =>
+      !isEarlyBishopHeadPawnPush(state, move, side) &&
+      !forbiddenEarlyMajorDrop(state, move, side) &&
+      !forbiddenEarlyKingExposure(state, move, side) &&
+      !forbiddenEarlyMajorAdvance(state, move, side)
+    );
     if (!window.ShogiRules.inCheck(state, side) && state.history.length < 44) {
       const noKingExposure = candidateMoves.filter(move => {
         if (move.drop || !move.from) return true;
@@ -1425,7 +1460,11 @@
     const cfg = config(level, options);
     const rootDeadline = performance.now() + cfg.time;
     const rawMoves = window.ShogiRules.legalMoves(state, state.turn);
-    let moves = rawMoves.filter(move => !forbiddenEarlyMajorDrop(state, move, state.turn));
+    let moves = rawMoves.filter(move =>
+      !forbiddenEarlyMajorDrop(state, move, state.turn) &&
+      !forbiddenEarlyKingExposure(state, move, state.turn) &&
+      !forbiddenEarlyMajorAdvance(state, move, state.turn)
+    );
     if (!moves.length) moves = rawMoves;
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
