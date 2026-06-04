@@ -24,6 +24,7 @@ function loadScript(file) {
   "js/board.js",
   "js/rules.js",
   "js/evaluation.js",
+  "js/opening-book.js",
   "js/opening.js",
   "js/ai.js",
   "js/ai-test.js"

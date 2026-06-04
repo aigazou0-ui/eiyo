@@ -5,7 +5,8 @@ importScripts(
   "board.js?v=75",
   "rules.js?v=80",
   "evaluation.js?v=82",
-  "opening.js?v=84",
+  "opening-book.js?v=1",
+  "opening.js?v=85",
   "ai.js?v=88"
 );
 

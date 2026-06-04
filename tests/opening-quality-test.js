@@ -14,6 +14,7 @@ vm.createContext(context);
   "js/board.js",
   "js/rules.js",
   "js/evaluation.js",
+  "js/opening-book.js",
   "js/opening.js",
   "js/ai.js"
 ].forEach(file => {

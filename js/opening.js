@@ -97,6 +97,20 @@
     }
   ];
 
+  function externalBook() {
+    const book = window.ShogiOpeningBook;
+    if (!book || !Array.isArray(book.entries)) return null;
+    if (!book._prefixMap) {
+      book._prefixMap = new Map();
+      for (const entry of book.entries) {
+        if (!entry || typeof entry.prefix !== "string") continue;
+        if (!book._prefixMap.has(entry.prefix)) book._prefixMap.set(entry.prefix, []);
+        book._prefixMap.get(entry.prefix).push(entry);
+      }
+    }
+    return book;
+  }
+
   const STYLE_LINES = {
     yagura: ["yagura"],
     gangi: ["gangi"],
@@ -214,6 +228,14 @@
     return STYLE_ALIASES[style] || style || "balanced";
   }
 
+  function styleMatchesEntry(entry, style) {
+    if (!entry || !Array.isArray(entry.tags) || !entry.tags.length) return true;
+    const normalized = normalizeStyle(style);
+    if (entry.tags.includes(normalized)) return true;
+    const activeIds = STYLE_LINES[normalized] || STYLE_LINES.balanced;
+    return activeIds.some(id => entry.tags.includes(id));
+  }
+
   function sameMove(a, b) {
     return moveKey(a) === moveKey(b);
   }
@@ -286,6 +308,27 @@
   function exactCandidates(state, legalMoves, style) {
     const history = historyUsi(state);
     const list = [];
+    const pack = externalBook();
+    if (pack && history.length <= (pack.maxPly || 30)) {
+      const prefix = history.join(" ");
+      const entries = pack._prefixMap.get(prefix) || [];
+      for (const entry of entries) {
+        if (!styleMatchesEntry(entry, style)) continue;
+        const moves = Array.isArray(entry.moves) ? entry.moves : [];
+        for (const item of moves) {
+          const usi = typeof item === "string" ? item : item && item.usi;
+          if (!usi) continue;
+          const move = legalBookMove(state, legalMoves, usi);
+          if (!move) continue;
+          const count = Math.max(1, Number(item.count) || 1);
+          const weight = Math.max(0.1, Number(item.weight) || 1);
+          const evalScore = Number.isFinite(item.eval) ? Math.max(-300, Math.min(300, item.eval)) : 0;
+          const depth = Math.max(0, Number(item.depth) || 0);
+          const score = 910000 + Math.log2(count + 1) * 9000 + weight * 7000 + evalScore * 35 + depth * 250 - history.length * 20;
+          list.push({ move, score, opening: entry.id || pack.id || "opening-pack", book: true, pack: true });
+        }
+      }
+    }
     for (const line of activeLines(style)) {
       const ply = history.length;
       if (ply >= line.moves.length) continue;
