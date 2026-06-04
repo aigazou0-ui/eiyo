@@ -1063,7 +1063,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=84");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=85");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;

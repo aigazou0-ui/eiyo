@@ -101,6 +101,9 @@ function issueForMove(state, move) {
   const ply = state.history.length;
   const moveUsi = usi(move);
   if (ply < 30 && move.drop) return { severity: 3, type: "early-drop", text: `${sideName(side)} ${moveUsi}: 序盤の持ち駒打ち` };
+  if (ply < 42 && move.drop && (move.piece === "B" || move.piece === "R")) {
+    return { severity: 4, type: "early-major-drop", text: `${sideName(side)} ${moveUsi}: early bishop/rook drop` };
+  }
   if ((moveUsi === "2c2d" || moveUsi === "8g8f") && !move.capture && ply < 72) {
     return { severity: 4, type: "bishop-head-pawn", text: `${sideName(side)} ${moveUsi}: 角頭歩に見える手` };
   }

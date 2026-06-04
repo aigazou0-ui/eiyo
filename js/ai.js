@@ -215,6 +215,21 @@
     return Math.round(value * scale);
   }
 
+  function earlyMajorDropPenalty(state, move, side) {
+    if (!move || !move.drop || (move.piece !== "B" && move.piece !== "R") || state.history.length >= 42) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const beforeDist = distance(move.to, enemyKing);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    let penalty = move.piece === "B" ? 18000 : 22000;
+    if (state.history.length < 30) penalty += 14000;
+    if (beforeDist > 3) penalty += 6000;
+    if (!defended) penalty += 5000;
+    return penalty;
+  }
+
   function kingWanderPenalty(state, move, side) {
     if (!move || move.drop) return 0;
     const piece = state.board[move.from.r][move.from.c];
@@ -613,6 +628,7 @@
       risk += 420 + Math.abs(exchange.see) * (1.1 + level * 0.08);
     }
     risk += unsupportedDropRisk(state, move, side) * (0.75 + level * 0.08);
+    risk += earlyMajorDropPenalty(state, move, side) * (0.9 + level * 0.08);
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
     risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
     risk += quietMajorPromotionPenalty(state, move, side) * (0.9 + level * 0.08);
@@ -891,6 +907,7 @@
     if (move.capture) score += ply < 18 ? -150 : 0;
     if (move.drop && ply < 24) score -= 240;
     if (move.drop && unsupportedDropRisk(state, move, side)) score -= unsupportedDropRisk(state, move, side) * 0.9;
+    if (move.drop) score -= earlyMajorDropPenalty(state, move, side) * 1.2;
     if (givesCheck(state, move, side) && ply < 32 && !move.capture) score -= 360;
     return score + momentum - shuffleRisk * 0.75;
   }
@@ -936,6 +953,7 @@
     if (move.drop) {
       if (move.piece === "G" || move.piece === "S") score += 9000;
       else if (move.piece === "P") score += 1500;
+      if (move.piece === "B" || move.piece === "R") score -= earlyMajorDropPenalty(state, move, state.turn) * 12;
     } else {
       const piece = state.board[move.from.r][move.from.c];
       if (piece) {

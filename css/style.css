@@ -410,28 +410,29 @@ h2 { font-size: 15px; }
 .square.check { background: linear-gradient(135deg, #df8a72, #c99645); }
 
 .piece {
-  width: 78%;
-  height: 88%;
+  width: 72%;
+  height: 86%;
   display: grid;
   place-items: center;
   color: #1e1408;
   font-weight: 900;
-  font-family: "Yu Mincho", "Hiragino Mincho ProN", "Yu Gothic UI", serif;
-  font-size: clamp(18px, calc(var(--cell) * .47), 34px);
-  line-height: 1;
-  clip-path: polygon(50% 1%, 88% 18%, 82% 98%, 18% 98%, 12% 18%);
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", "HGS明朝E", "MS Mincho", serif;
+  font-size: clamp(20px, calc(var(--cell) * .5), 36px);
+  line-height: .96;
+  letter-spacing: 0;
+  clip-path: polygon(50% 0, 88% 20%, 79% 100%, 21% 100%, 12% 20%);
   background:
-    linear-gradient(145deg, rgba(255,255,255,.48) 0 16%, transparent 38%),
-    linear-gradient(90deg, rgba(119, 74, 25, .1) 0 1px, transparent 1px 10px),
-    linear-gradient(180deg, #ffe7a8 0%, #e8b14a 58%, #c9872e 100%);
-  border: 1px solid rgba(76, 49, 17, .62);
+    linear-gradient(145deg, rgba(255,255,255,.62) 0 18%, transparent 42%),
+    linear-gradient(90deg, rgba(116, 71, 19, .09) 0 1px, transparent 1px 11px),
+    linear-gradient(180deg, #ffe9ab 0%, #efbd5d 56%, #c9882d 100%);
+  border: 1px solid rgba(82, 50, 12, .72);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    inset 0 -4px 7px rgba(100, 55, 12, .22),
-    0 3px 5px rgba(39, 22, 5, .28);
+    inset 0 1px 0 rgba(255,255,255,.72),
+    inset 0 -3px 6px rgba(96, 56, 14, .2),
+    0 2px 3px rgba(39, 22, 5, .3);
   text-shadow:
-    0 1px rgba(255,255,255,.58),
-    0 0 1px rgba(0,0,0,.25);
+    0 1px 0 rgba(255,255,255,.55),
+    0 0 1px rgba(0,0,0,.45);
   pointer-events: none;
   position: relative;
   z-index: 2;
@@ -441,8 +442,9 @@ h2 { font-size: 15px; }
 .piece.opponent-piece {
   transform: rotate(180deg);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.25), transparent 38%),
-    linear-gradient(180deg, #ffe4a2, #d79b38);
+    linear-gradient(145deg, rgba(255,255,255,.56) 0 18%, transparent 42%),
+    linear-gradient(90deg, rgba(116, 71, 19, .09) 0 1px, transparent 1px 11px),
+    linear-gradient(180deg, #ffe6a4, #dda23d);
 }
 
 .game-popup {
@@ -476,40 +478,18 @@ h2 { font-size: 15px; }
 .piece.promoted { color: #9b2119; }
 
 .piece[data-piece] {
-  clip-path: none;
-  border: 0;
-  background-color: transparent;
-  background-position: center 42%;
+  background-position: center;
   background-repeat: no-repeat;
-  background-size: 124%;
-  box-shadow: none;
-  color: transparent;
-  text-shadow: none;
 }
 
-.piece[data-piece="K"] { background-image: url("../assets/pieces/K.png"); }
-.piece[data-piece="K2"] { background-image: url("../assets/pieces/K2.png"); }
-.piece[data-piece="R"] { background-image: url("../assets/pieces/R.png"); }
-.piece[data-piece="B"] { background-image: url("../assets/pieces/B.png"); }
-.piece[data-piece="G"] { background-image: url("../assets/pieces/G.png"); }
-.piece[data-piece="S"] { background-image: url("../assets/pieces/S.png"); }
-.piece[data-piece="N"] { background-image: url("../assets/pieces/N.png"); }
-.piece[data-piece="L"] { background-image: url("../assets/pieces/L.png"); }
-.piece[data-piece="P"] { background-image: url("../assets/pieces/P.png"); }
-.piece[data-piece="PR"] { background-image: url("../assets/pieces/PR.png"); }
-.piece[data-piece="PB"] { background-image: url("../assets/pieces/PB.png"); }
-.piece[data-piece="PS"] { background-image: url("../assets/pieces/PS.png"); }
-.piece[data-piece="PN"] { background-image: url("../assets/pieces/PN.png"); }
-.piece[data-piece="PL"] { background-image: url("../assets/pieces/PL.png"); }
-.piece[data-piece="PP"] { background-image: url("../assets/pieces/PP.png"); }
-
 .piece.long-label {
-  font-size: clamp(13px, calc(var(--cell) * .31), 22px);
+  font-size: clamp(14px, calc(var(--cell) * .33), 22px);
   letter-spacing: 0;
 }
 
 .piece.promoted.long-label {
-  font-size: clamp(12px, calc(var(--cell) * .28), 20px);
+  font-size: clamp(13px, calc(var(--cell) * .29), 20px);
+  color: #a12319;
 }
 
 .hand {
