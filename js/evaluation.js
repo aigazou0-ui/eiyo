@@ -264,6 +264,41 @@
     return score;
   }
 
+  function enteringKingScore(state, side, phase, attacks) {
+    if (phase !== "endgame") return 0;
+    const king = findKing(state, side);
+    if (!king) return -900;
+    const enemy = side === "b" ? "w" : "b";
+    const advanced = side === "b" ? 8 - king.r : king.r;
+    let score = 0;
+    if (advanced >= 6) score += 170 + (advanced - 5) * 78;
+    else if (advanced >= 4) score += 45;
+    else return score;
+
+    let campPieces = 0;
+    let supportNearKing = 0;
+    let pointLike = 0;
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (!p || p.owner !== side || p.type === "K") continue;
+        const inEnemyCamp = side === "b" ? r <= 2 : r >= 6;
+        if (!inEnemyCamp) continue;
+        campPieces += 1;
+        pointLike += (p.type === "R" || p.type === "B") ? 5 : 1;
+        if (Math.abs(r - king.r) + Math.abs(c - king.c) <= 2) supportNearKing += 1;
+      }
+    }
+    const hands = state.hands[side] || {};
+    pointLike += ((hands.R || 0) + (hands.B || 0)) * 5;
+    pointLike += (hands.G || 0) + (hands.S || 0) + (hands.N || 0) + (hands.L || 0) + Math.min(5, hands.P || 0);
+    score += campPieces * 24 + supportNearKing * 38 + Math.min(230, pointLike * 9);
+    score += (attacks[side][king.r][king.c] || 0) * 22;
+    score -= (attacks[enemy][king.r][king.c] || 0) * 44;
+    if (attacks[enemy][king.r][king.c]) score -= 140;
+    return score;
+  }
+
   function activityScore(state, side, phase) {
     let score = 0;
     for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
@@ -342,6 +377,7 @@
     score += (kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks)) * weights.king;
     score += (attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks)) * weights.attack;
     score += endgamePressure(state, "b", phase, attacks) - endgamePressure(state, "w", phase, attacks);
+    score += enteringKingScore(state, "b", phase, attacks) - enteringKingScore(state, "w", phase, attacks);
     score += (activityScore(state, "b", phase) - activityScore(state, "w", phase)) * weights.activity;
     score -= (loosePiecePenalty(state, "b", phase, attacks) - loosePiecePenalty(state, "w", phase, attacks)) * weights.loose;
     score += (majorPieceSafety(state, "b", phase, attacks) - majorPieceSafety(state, "w", phase, attacks)) * weights.major;

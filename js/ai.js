@@ -328,6 +328,7 @@
     let risk = 0;
     if (isEarlyBishopHeadPawnPush(state, move, side)) risk += 9000;
     if (isRecentReverse(state, move)) risk += 520;
+    risk += repetitionShuffleRisk(state, move);
     if (move.drop && state.history.length < 24) risk += 260;
     if (!move.drop && move.from) {
       const piece = state.board[move.from.r][move.from.c];
@@ -589,6 +590,7 @@
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
     risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
     risk += quietMajorPromotionPenalty(state, move, side) * (0.9 + level * 0.08);
+    risk += repetitionShuffleRisk(state, move) * (0.7 + level * 0.06);
 
     return risk;
   }
@@ -825,7 +827,8 @@
     const side = state.turn;
     let score = 0;
     const momentum = attackMomentumBonus(state, move, side);
-    if (ply > 34) return momentum;
+    const shuffleRisk = repetitionShuffleRisk(state, move);
+    if (ply > 34) return momentum - shuffleRisk * 0.9;
 
     if (!move.drop && move.from) {
       const p = state.board[move.from.r][move.from.c];
@@ -861,7 +864,7 @@
     if (move.drop && ply < 24) score -= 240;
     if (move.drop && unsupportedDropRisk(state, move, side)) score -= unsupportedDropRisk(state, move, side) * 0.9;
     if (givesCheck(state, move, side) && ply < 32 && !move.capture) score -= 360;
-    return score + momentum;
+    return score + momentum - shuffleRisk * 0.75;
   }
 
   function moveOrderingScore(state, move, hashMove, ply) {
@@ -930,6 +933,32 @@
           prev.to.r === move.from.r && prev.to.c === move.from.c) return true;
     }
     return false;
+  }
+
+  function repetitionShuffleRisk(state, move) {
+    if (!move || move.drop || move.capture || move.promote || !move.from || !move.to) return 0;
+    if (!state.history || state.history.length < 8 || state.history.length > 120) return 0;
+    const piece = state.board[move.from.r][move.from.c];
+    const lookback = piece && (piece.type === "R" || piece.type === "B") ? 18 : 12;
+    let reverseCount = 0;
+    let sameCount = 0;
+    let fromToLoop = 0;
+    const start = Math.max(0, state.history.length - lookback);
+    for (let i = state.history.length - 1; i >= start; i -= 1) {
+      const prev = state.history[i];
+      if (!prev || prev.drop || prev.capture || prev.promote || !prev.from || !prev.to) continue;
+      const reversed = prev.from.r === move.to.r && prev.from.c === move.to.c &&
+        prev.to.r === move.from.r && prev.to.c === move.from.c;
+      const repeated = prev.from.r === move.from.r && prev.from.c === move.from.c &&
+        prev.to.r === move.to.r && prev.to.c === move.to.c;
+      if (reversed) reverseCount += 1;
+      if (repeated) sameCount += 1;
+      if (reversed || repeated) fromToLoop += 1;
+    }
+    if (!fromToLoop) return 0;
+    const majorScale = piece && (piece.type === "R" || piece.type === "B") ? 1.35 : 1;
+    const lateScale = state.history.length >= 44 ? 1.25 : 1;
+    return Math.round((reverseCount * 280 + sameCount * 190 + fromToLoop * 70) * majorScale * lateScale);
   }
 
   function fastMobileCandidates(state, moves) {

@@ -523,7 +523,9 @@
         const selectedClass = interactive && selected && selected.r === pos.r && selected.c === pos.c ? "selected-piece" : "";
         const perspectiveClass = p.owner === playerSide ? "player-piece" : "opponent-piece";
         pieceEl.className = `piece ${perspectiveClass} ${p.promoted ? "promoted" : ""} ${selectedClass}`;
+        pieceEl.dataset.piece = p.type === "K" && p.owner === "w" ? "K2" : window.ShogiPieces.keyOf(p);
         const label = window.ShogiPieces.labelOf(p);
+        pieceEl.setAttribute("aria-label", label);
         if (label.length > 1) pieceEl.classList.add("long-label");
         pieceEl.textContent = label;
         sq.appendChild(pieceEl);
@@ -579,7 +581,9 @@
 
       const pieceFace = document.createElement("span");
       pieceFace.className = `piece hand-face ${side === playerSide ? "player-piece" : "opponent-piece"}`;
+      pieceFace.dataset.piece = type;
       const label = window.ShogiPieces.labelOf(type);
+      pieceFace.setAttribute("aria-label", label);
       if (label.length > 1) pieceFace.classList.add("long-label");
       pieceFace.textContent = label;
 

@@ -475,6 +475,34 @@ h2 { font-size: 15px; }
 
 .piece.promoted { color: #9b2119; }
 
+.piece[data-piece] {
+  clip-path: none;
+  border: 0;
+  background-color: transparent;
+  background-position: center 42%;
+  background-repeat: no-repeat;
+  background-size: 124%;
+  box-shadow: none;
+  color: transparent;
+  text-shadow: none;
+}
+
+.piece[data-piece="K"] { background-image: url("../assets/pieces/K.png"); }
+.piece[data-piece="K2"] { background-image: url("../assets/pieces/K2.png"); }
+.piece[data-piece="R"] { background-image: url("../assets/pieces/R.png"); }
+.piece[data-piece="B"] { background-image: url("../assets/pieces/B.png"); }
+.piece[data-piece="G"] { background-image: url("../assets/pieces/G.png"); }
+.piece[data-piece="S"] { background-image: url("../assets/pieces/S.png"); }
+.piece[data-piece="N"] { background-image: url("../assets/pieces/N.png"); }
+.piece[data-piece="L"] { background-image: url("../assets/pieces/L.png"); }
+.piece[data-piece="P"] { background-image: url("../assets/pieces/P.png"); }
+.piece[data-piece="PR"] { background-image: url("../assets/pieces/PR.png"); }
+.piece[data-piece="PB"] { background-image: url("../assets/pieces/PB.png"); }
+.piece[data-piece="PS"] { background-image: url("../assets/pieces/PS.png"); }
+.piece[data-piece="PN"] { background-image: url("../assets/pieces/PN.png"); }
+.piece[data-piece="PL"] { background-image: url("../assets/pieces/PL.png"); }
+.piece[data-piece="PP"] { background-image: url("../assets/pieces/PP.png"); }
+
 .piece.long-label {
   font-size: clamp(13px, calc(var(--cell) * .31), 22px);
   letter-spacing: 0;
