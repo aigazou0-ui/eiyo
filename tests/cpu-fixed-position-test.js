@@ -338,6 +338,29 @@ function supportedCentralPushState() {
   return state;
 }
 
+function usefulEdgePawnState() {
+  const state = emptyState("b", 18);
+  state.board[8][0] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][0] = piece("P", "b");
+  state.board[8][1] = piece("G", "b");
+  return state;
+}
+
+function badEdgePawnState() {
+  const state = emptyState("b", 20);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][0] = piece("P", "b");
+  state.board[4][0] = piece("R", "w");
+  return state;
+}
+
+function naturalRookDevelopmentState() {
+  const state = stateFromMoves(["2g2f", "8c8d"]);
+  return state;
+}
+
 function badKingMoveState() {
   const state = emptyState("b", 20);
   state.board[7][4] = piece("K", "b");
@@ -633,7 +656,8 @@ function run() {
 
   {
     const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g"]);
-    failures.push(assertTest("realgame-label-unsupported-8d8e", hasReasonForMove(state, "8d8e", ["unsupportedAttackProbe"]), { moveUsi: "8d8e", debug: debugForUsi(state, "8d8e") }));
+    failures.push(assertTest("realgame-supported-probe-8d8e-now-allowed", lacksReasonForMove(state, "8d8e", ["unsupportedAttackProbe", "badPawnPush", "probeHasNoFollowUp"]), { moveUsi: "8d8e", debug: debugForUsi(state, "8d8e") }));
+    failures.push(assertTest("realgame-supported-probe-8d8e-positive", hasPositiveReasonForMove(state, "8d8e", ["probeKeepsFlexibility"]), { moveUsi: "8d8e", debug: debugForUsi(state, "8d8e") }));
     const decision = choose(state, { openingStyle: "static-rapid" });
     failures.push(assertTest("realgame-avoid-unsupported-8d8e", !hasBadReason(decision.debug, ["unsupportedAttackProbe"]), decision));
   }
@@ -676,6 +700,61 @@ function run() {
     const state = supportedCentralPushState();
     failures.push(assertTest("central-supported-push-no-risk", lacksReasonForMove(state, "5g5f", ["badPawnPush", "centralBreakthroughRisk", "unsupportedCentralPush"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
     failures.push(assertTest("central-supported-push-positive", hasPositiveReasonForMove(state, "5g5f", ["supportedCentralPush", "naturalCentralDevelopment", "goodPawnPush"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = usefulEdgePawnState();
+    failures.push(assertTest("edge-pawn-escape-route-not-bad", lacksReasonForMove(state, "9g9f", ["badEdgePawn", "unsupportedAttackProbe", "pointlessEdgePawn"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+    failures.push(assertTest("edge-pawn-escape-route-positive", hasPositiveReasonForMove(state, "9g9f", ["usefulEdgePawn", "edgeEscapeRoute"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "9c9d"]);
+    failures.push(assertTest("edge-pawn-response-not-probe", lacksReasonForMove(state, "9g9f", ["unsupportedAttackProbe", "badEdgePawn"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+    failures.push(assertTest("edge-pawn-response-positive", hasPositiveReasonForMove(state, "9g9f", ["respondsToOpponentEdge"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+  }
+
+  {
+    const state = badEdgePawnState();
+    failures.push(assertTest("edge-pawn-bad-one-pawn-loss", hasReasonForMove(state, "9g9f", ["badEdgePawn", "pointlessEdgePawn", "probeHasNoFollowUp"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "8d8e", "2g2f", "7c7d", "3i4h", "8a7c", "5i6i", "8e8f", "6i7i", "6a5b", "6g6f", "6c6d", "7i6h", "6b6c", "4i5h", "5c5d"]);
+    failures.push(assertTest("realgame-rook-pawn-probe-2f2e-not-unsupported", lacksReasonForMove(state, "2f2e", ["unsupportedAttackProbe", "badPawnPush"]), { moveUsi: "2f2e", debug: debugForUsi(state, "2f2e") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g"]);
+    failures.push(assertTest("realgame-king-wander-6b7b", hasReasonForMove(state, "6b7b", ["kingWander", "badKingMove", "kingReducesEscapeRoutes"]), { moveUsi: "6b7b", debug: debugForUsi(state, "6b7b") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d"]);
+    failures.push(assertTest("king-castle-toward-golds-not-wander", lacksReasonForMove(state, "5i6h", ["kingWander", "badKingMove", "kingLeavesDefense"]), { moveUsi: "5i6h", debug: debugForUsi(state, "5i6h") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d"]);
+    failures.push(assertTest("minor-natural-silver-not-loose", lacksReasonForMove(state, "7i6h", ["looseMinorShape", "minorPieceHangs", "minorHasNoRole"]), { moveUsi: "7i6h", debug: debugForUsi(state, "7i6h") }));
+    failures.push(assertTest("minor-natural-silver-positive", hasPositiveReasonForMove(state, "7i6h", ["naturalMinorDevelopment", "minorIsDefended"]), { moveUsi: "7i6h", debug: debugForUsi(state, "7i6h") }));
+  }
+
+  {
+    const state = chasedSilverState();
+    failures.push(assertTest("minor-bad-chased-silver-shape", hasReasonForMove(state, "5g5f", ["looseMinorShape", "minorCanBeChased", "minorPieceHangs"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = naturalRookDevelopmentState();
+    failures.push(assertTest("major-natural-rook-development-not-sortie", lacksReasonForMove(state, "2h2g", ["earlyMajorSortie", "majorOverextension", "majorCanBeChased"]), { moveUsi: "2h2g", debug: debugForUsi(state, "2h2g") }));
+    failures.push(assertTest("major-natural-rook-development-positive", hasPositiveReasonForMove(state, "2h2g", ["naturalRookDevelopment", "majorExchangeOk"]), { moveUsi: "2h2g", debug: debugForUsi(state, "2h2g") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h", "5e5f", "5g5f", "4d5e", "2g2f", "7c7d", "5f5e"]);
+    failures.push(assertTest("realgame-major-capture-2b5e-not-sortie", lacksReasonForMove(state, "2b5e", ["earlyMajorSortie", "majorSortieHasNoFollowUp", "majorOverextension"]), { moveUsi: "2b5e", debug: debugForUsi(state, "2b5e") }));
+    failures.push(assertTest("realgame-major-capture-2b5e-positive", hasPositiveReasonForMove(state, "2b5e", ["majorCreatesPressure", "majorExchangeOk", "majorHasFollowUp"]), { moveUsi: "2b5e", debug: debugForUsi(state, "2b5e") }));
   }
 
   const failed = failures.filter(Boolean);
