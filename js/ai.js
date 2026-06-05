@@ -275,6 +275,29 @@
     return !gives && pressure <= 0 && support < 4;
   }
 
+  function allowsOpponentMateInOne(state, move) {
+    if (!move) return false;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defender = state.turn;
+    const mate = window.ShogiRules.findMate(state, defender, 1);
+    window.ShogiBoard.undoMove(state, undo);
+    return !!mate;
+  }
+
+  function preferNoImmediateMate(state, ordered, limit) {
+    if (!ordered.length || state.history.length < 64) return ordered;
+    const inCheck = window.ShogiRules.inCheck(state, state.turn);
+    if (!inCheck && ordered.length > 8) return ordered;
+    const checkLimit = Math.min(limit || 4, ordered.length);
+    for (let i = 0; i < checkLimit; i += 1) {
+      if (!allowsOpponentMateInOne(state, ordered[i].move)) {
+        if (i === 0) return ordered;
+        return [ordered[i]].concat(ordered.slice(0, i), ordered.slice(i + 1));
+      }
+    }
+    return ordered;
+  }
+
   function kingWanderPenalty(state, move, side) {
     if (!move || move.drop) return 0;
     const piece = state.board[move.from.r][move.from.c];
@@ -1252,7 +1275,7 @@
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(28, moves.length));
     if (state.history.length >= 22 || moves.length > 56) {
-      return ordered
+      const rescored = preferNoImmediateMate(state, ordered, 4)
         .slice(0, 6)
         .map(item => {
           const undo = window.ShogiBoard.makeMove(state, item.move);
@@ -1265,10 +1288,10 @@
             score: item.score + positional * 0.16 + checkBonus - middleRisk * 520 - centralRisk * 700
           });
         })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
+        .sort((a, b) => b.score - a.score);
+      return preferNoImmediateMate(state, rescored, 4).slice(0, 3);
     }
-    return ordered
+    const rescored = preferNoImmediateMate(state, ordered, 4)
       .map((item, index) => {
         if (index >= 14) return item;
         const undo = window.ShogiBoard.makeMove(state, item.move);
@@ -1277,8 +1300,8 @@
         window.ShogiBoard.undoMove(state, undo);
         return Object.assign({}, item, { score: item.score + positional * 0.14 + checkBonus });
       })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
+      .sort((a, b) => b.score - a.score);
+    return preferNoImmediateMate(state, rescored, 4).slice(0, 3);
   }
 
   function orderedMoves(state, moves, hashMove, ply) {
@@ -1469,6 +1492,16 @@
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };
     const fallbackMove = moves[0];
 
+    const mateInOne = window.ShogiRules.findMate(state, state.turn, 1);
+    if (mateInOne) {
+      return {
+        bestMove: mateInOne,
+        candidates: [{ move: mateInOne, score: MATE - 1, depth: 1, nodes: moves.length, mate: 1, pv: [mateInOne] }],
+        nodes: moves.length,
+        depth: 1
+      };
+    }
+
     const profile = state.aiProfile && state.aiProfile[state.turn];
     const bookMoves = window.ShogiOpening
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
@@ -1500,7 +1533,7 @@
     const mateDepth = cfg.mobile
       ? (cfg.mobileMateDepth >= 3 && canTryThreePlyMate ? 3 : 1)
       : (level >= 8 && canTryThreePlyMate ? 5 : level >= 5 && canTryThreePlyMate ? 3 : 1);
-    const mate = window.ShogiRules.findMate(state, state.turn, mateDepth);
+    const mate = mateDepth > 1 ? window.ShogiRules.findMate(state, state.turn, mateDepth) : null;
     if (mate) {
       return {
         bestMove: mate,
