@@ -40,6 +40,7 @@ const GAME_COUNT = Math.max(1, Number(process.env.BLUNDER_GAMES || 20));
 const MAX_PLIES = Math.max(20, Number(process.env.BLUNDER_PLIES || 60));
 const LEVEL = Math.max(1, Math.min(10, Number(process.env.BLUNDER_LEVEL || 10)));
 const FAIL_SEVERITY = Math.max(3, Number(process.env.BLUNDER_FAIL_SEVERITY || 4));
+const LOG_BAD_MOVES = process.env.BLUNDER_LOG_BAD === "1" || process.env.BLUNDER_LOG_BAD === "true";
 
 function sq(pos) {
   return `${FILES[pos.c]}${RANKS[pos.r]}`;
@@ -49,6 +50,24 @@ function usi(move) {
   if (!move) return "null";
   if (move.drop) return `${move.piece}*${sq(move.to)}`;
   return `${sq(move.from)}${sq(move.to)}${move.promote ? "+" : ""}`;
+}
+
+function serializableMove(move) {
+  if (!move) return null;
+  return JSON.parse(JSON.stringify(move));
+}
+
+function serializeState(state) {
+  return {
+    board: state.board.map(row => row.map(piece => piece ? {
+      type: piece.type,
+      owner: piece.owner,
+      promoted: !!piece.promoted
+    } : null)),
+    hands: JSON.parse(JSON.stringify(state.hands)),
+    sideToMove: state.turn,
+    moveNumber: state.history.length + 1
+  };
 }
 
 function moveKey(move) {
@@ -145,6 +164,40 @@ function profileFor(gameIndex, side) {
     personality: "stable",
     randomness: "none",
     openingStyle: STYLES[(gameIndex + (side === "b" ? 0 : 3)) % STYLES.length]
+  };
+}
+
+function badLogEntry(gameIndex, state, result, move, moveRecord, recentMoves) {
+  const debug = context.ShogiAI.debugMove(state, move, LEVEL, { mobile: true }) || {};
+  const reasons = debug.badMoveReasons || [];
+  if (!reasons.length) return null;
+  const next = context.ShogiBoard.applyMove(state, cloneMove(move));
+  const breakdown = context.ShogiEvaluation.scoreBreakdown(next, state.turn);
+  const candidates = (result.candidates || []).slice(0, 3).map(item => {
+    const candidateDebug = context.ShogiAI.debugMove(state, item.move, LEVEL, { mobile: true }) || {};
+    return {
+      move: usi(item.move),
+      score: Math.round(item.score || 0),
+      badMoveReasons: candidateDebug.badMoveReasons || []
+    };
+  });
+  return {
+    id: `realgame-${String(gameIndex + 1).padStart(2, "0")}-${String(state.history.length + 1).padStart(3, "0")}`,
+    description: "実戦短縮対局から検出したbadMoveReasons付きCPU手",
+    board: serializeState(state).board,
+    hands: serializeState(state).hands,
+    sideToMove: state.turn,
+    moveNumber: state.history.length + 1,
+    previousMoves: recentMoves.slice(-5).map(item => item.move),
+    badMoves: [usi(move)],
+    expectedBadReasons: reasons,
+    goodMoveHints: ["castleDevelopment", "defendFloatingPiece", "avoidStaticExchange"],
+    selectedMove: usi(move),
+    selectedMoveObject: serializableMove(move),
+    evaluationScore: debug.evaluationScore,
+    scoreBreakdown: breakdown,
+    topCandidates: candidates,
+    elapsedMs: moveRecord ? moveRecord.elapsed : undefined
   };
 }
 
@@ -312,6 +365,7 @@ function runGame(gameIndex) {
   state.aiProfile = { b: profileFor(gameIndex, "b"), w: profileFor(gameIndex, "w") };
   const moves = [];
   const issues = [];
+  const badMoveLogs = [];
   const timings = [];
   const evals = [context.ShogiEvaluation.scoreState(state)];
 
@@ -338,6 +392,11 @@ function runGame(gameIndex) {
 
     const next = context.ShogiBoard.applyMove(state, cloneMove(move));
     const afterEval = context.ShogiEvaluation.scoreState(next);
+    if (LOG_BAD_MOVES) {
+      const previewRecord = { ply: ply + 1, side: state.turn, move: usi(move), elapsed, beforeEval, afterEval };
+      const logEntry = badLogEntry(gameIndex, state, result, move, previewRecord, moves);
+      if (logEntry) badMoveLogs.push(logEntry);
+    }
     issues.push(...inspectMove(state, move, beforeEval, afterEval));
     issues.push(...inspectBoardShape(next, ply + 1));
     moves.push({ ply: ply + 1, side: state.turn, move: usi(move), elapsed, beforeEval, afterEval });
@@ -357,12 +416,14 @@ function runGame(gameIndex) {
     avgMs: Math.round(timings.reduce((sum, item) => sum + item, 0) / Math.max(1, timings.length)),
     maxSwing,
     first24: moves.slice(0, 24).map(item => item.move).join(" "),
-    suspicious: issues.slice(0, 8)
+    suspicious: issues.slice(0, 8),
+    badMoveLogs
   };
 }
 
 const games = Array.from({ length: GAME_COUNT }, (_, i) => runGame(i));
 const allIssues = games.flatMap(game => game.issues.map(issue => Object.assign({ game: game.game }, issue)));
+const badMoveLogs = games.flatMap(game => game.badMoveLogs || []);
 const failIssues = allIssues.filter(issue => issue.severity >= FAIL_SEVERITY);
 const typeCounts = allIssues.reduce((map, issue) => {
   map[issue.type] = (map[issue.type] || 0) + 1;
@@ -377,6 +438,8 @@ const result = {
   failCount: failIssues.length,
   typeCounts,
   slowGames: slowGames.map(game => ({ game: game.game, maxMs: game.maxMs })),
+  badMoveLogCount: badMoveLogs.length,
+  badMoveLogs: badMoveLogs.slice(0, 20),
   failIssues: failIssues.slice(0, 30),
   worstGames: games
     .filter(game => game.issues.length)

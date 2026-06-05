@@ -259,7 +259,7 @@ function sacrificeCheckState() {
   state.board[8][4] = piece("K", "b");
   state.board[0][4] = piece("K", "w");
   state.board[4][4] = piece("R", "b");
-  state.board[1][4] = piece("G", "w");
+  state.board[1][3] = piece("G", "w");
   state.board[0][3] = piece("G", "w");
   return state;
 }
@@ -404,6 +404,46 @@ function run() {
     // 避ける悪手: 清算後に損する駒取り。良い傾向: 取れる駒より取り返し後の損得を見る。
     const state = forcedRecaptureState();
     failures.push(assertTest("label-bad-static-exchange-on-capture", hasReasonForMove(state, "5e6d", ["badStaticExchange", "hangingAfterMove"]), { moveUsi: "5e6d", debug: { badMoveReasons: badReasonsForUsi(state, "5e6d") } }));
+  }
+
+  {
+    // 実戦風: 端歩を突いた後に角を9七へ出して働きを弱くする。良い傾向: 7九銀/6九金など囲い進行。
+    const state = stateFromMoves(["7g7f", "3c3d", "2g2f", "8c8d", "9g9f", "7a6b"]);
+    const decision = choose(state);
+    failures.push(assertTest("realgame-avoid-opening-edge-bishop", !hasBadReason(decision.debug, ["badBishopMove", "trappedBishop", "ignoresCastleDevelopment"]), decision));
+    failures.push(assertTest("realgame-label-opening-edge-bishop", hasReasonForMove(state, "8h9g", ["badBishopMove", "ignoresCastleDevelopment"]), { moveUsi: "8h9g", debug: { badMoveReasons: badReasonsForUsi(state, "8h9g") } }));
+  }
+
+  {
+    // 実戦風: 角を取れるだけの2二角成で、清算後の狙いが薄い。良い傾向: まず玉金銀を整える。
+    const state = stateFromMoves(["7g7f", "3c3d", "2g2f", "8c8d"]);
+    const decision = choose(state, { openingStyle: "bishop-exchange" });
+    failures.push(assertTest("realgame-avoid-empty-bishop-trade", decision.moveUsi !== "8h2b+", decision));
+    failures.push(assertTest("realgame-label-empty-bishop-trade", hasReasonForMove(state, "8h2b+", ["earlyMeaninglessBishopExchange", "badBishopMove", "hangingAfterMove"]), { moveUsi: "8h2b+", debug: { badMoveReasons: badReasonsForUsi(state, "8h2b+") } }));
+  }
+
+  {
+    // 実戦風: 5七銀からさらに4六銀へ単独進出し、歩や角に狙われる。良い傾向: 支えを作ってから銀を使う。
+    const state = stateFromMoves(["7g7f", "3c3d", "5g5f", "8c8d", "7i6h", "8d8e", "6h5g", "7a6b"]);
+    const decision = choose(state);
+    failures.push(assertTest("realgame-avoid-floating-silver-advance", !hasBadReason(decision.debug, ["unsupportedSilverAdvance", "silverLeavesCastle"]), decision));
+    failures.push(assertTest("realgame-label-floating-silver-advance", hasReasonForMove(state, "5g4f", ["unsupportedSilverAdvance", "silverLeavesCastle", "looseMinorShape"]), { moveUsi: "5g4f", debug: { badMoveReasons: badReasonsForUsi(state, "5g4f") } }));
+  }
+
+  {
+    // 実戦風: 居玉のまま角だけ6六へ出す。良い傾向: 飛角より先に玉か金銀を整備する。
+    const state = stateFromMoves(["7g7f", "3c3d", "2g2f", "8c8d"]);
+    const decision = choose(state);
+    failures.push(assertTest("realgame-avoid-ikyoku-major-only", !hasBadReason(decision.debug, ["ignoresCastleDevelopment", "earlyMajorSortie", "badBishopMove"]), decision));
+    failures.push(assertTest("realgame-label-ikyoku-major-only", hasReasonForMove(state, "8h6f", ["ignoresCastleDevelopment", "earlyMajorSortie"]), { moveUsi: "8h6f", debug: { badMoveReasons: badReasonsForUsi(state, "8h6f") } }));
+  }
+
+  {
+    // 実戦風: 中盤で単発王手をして攻め駒だけ消える。良い傾向: 王手より駒得と継続攻めを優先する。
+    const state = sacrificeCheckState();
+    const decision = choose(state);
+    failures.push(assertTest("realgame-avoid-sacrifice-check", !hasBadReason(decision.debug, ["badSacrificeCheck", "noFollowUpCheck", "attackPieceLostAfterCheck"]), decision));
+    failures.push(assertTest("realgame-label-sacrifice-check-followup", hasReasonForMove(state, "5e5b+", ["badSacrificeCheck", "noFollowUpCheck", "attackPieceLostAfterCheck"]), { moveUsi: "5e5b+", debug: { badMoveReasons: badReasonsForUsi(state, "5e5b+") } }));
   }
 
   const failed = failures.filter(Boolean);

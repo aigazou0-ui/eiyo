@@ -639,11 +639,50 @@
   }
 
   function badSacrificeCheckRisk(state, move, side, exchange) {
-    if (!exchange || !exchange.check || exchange.mateThreat || state.history.length >= 74) return 0;
+    const isCheck = (exchange && exchange.check) || givesCheck(state, move, side);
+    if (!exchange || !isCheck || exchange.mateThreat || state.history.length >= 74) return 0;
     const piece = movingPiece(state, move);
     if (!piece || piece.type === "P" || piece.type === "K") return 0;
     if (exchange.see < -60 || exchange.hanging) return 1300 + Math.abs(Math.min(0, exchange.see));
     return 0;
+  }
+
+  function attackPieceLostAfterCheckRisk(state, move, side, exchange) {
+    const isCheck = (exchange && exchange.check) || givesCheck(state, move, side);
+    if (!exchange || !isCheck || exchange.mateThreat || state.history.length >= 78 || move.drop) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type === "P" || piece.type === "K") return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const enemy = state.turn;
+    const replies = window.ShogiRules.legalMoves(state, enemy).slice(0, 18);
+    let canTakeCheckingPiece = false;
+    for (const reply of replies) {
+      if (!reply.drop && reply.to && reply.to.r === move.to.r && reply.to.c === move.to.c) {
+        canTakeCheckingPiece = true;
+        break;
+      }
+    }
+    const stillAttacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (canTakeCheckingPiece || (stillAttacked && !defended)) return piece.type === "R" ? 1500 : 1100;
+    return 0;
+  }
+
+  function noFollowUpCheckRisk(state, move, side, exchange) {
+    const isCheck = (exchange && exchange.check) || givesCheck(state, move, side);
+    if (!exchange || !isCheck || exchange.mateThreat || state.history.length >= 78) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type === "P" || piece.type === "K") return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const canPromote = !!move.promote;
+    window.ShogiBoard.undoMove(state, undo);
+    if (exchange.see > 80 || canPromote || pressure >= 2 || support >= 4) return 0;
+    return 620;
   }
 
   function weakKingShapeRisk(state, move, side) {
@@ -671,8 +710,11 @@
     if (!piece || piece.type === "K") return 0;
     const king = findKing(state, side);
     if (!king) return 0;
+    const home = side === "b" ? 8 : 0;
+    const kingMoved = Math.abs(king.c - 4) + Math.abs(king.r - home);
     const toKing = distance(move.to, king);
     if ((piece.type === "G" || piece.type === "S") && toKing <= 2) return 0;
+    if ((piece.type === "R" || piece.type === "B") && kingMoved === 0 && advancedRank(side, move.to) >= 2 && !move.capture) return 340;
     if (["R", "B", "S"].includes(piece.type) && advancedRank(side, move.to) >= 3 && weakKingShapeRisk(state, move, side)) return 360;
     return 0;
   }
@@ -1137,6 +1179,8 @@
     risk += weakKingShapeRisk(state, move, side) * (0.45 + level * 0.04);
     risk += ignoresCastleDevelopmentRisk(state, move, side) * (0.55 + level * 0.05);
     risk += badSacrificeCheckRisk(state, move, side, exchange) * (0.95 + level * 0.08);
+    risk += attackPieceLostAfterCheckRisk(state, move, side, exchange) * (0.9 + level * 0.08);
+    risk += noFollowUpCheckRisk(state, move, side, exchange) * (0.75 + level * 0.06);
     if (isCheckMove && !exchange.mateThreat && exchange.see < -40) {
       risk += 420 + Math.abs(exchange.see) * (1.1 + level * 0.08);
     }
@@ -1245,6 +1289,8 @@
     add(weakKingShapeRisk(state, move, side) > 0, "weakKingShape");
     add(ignoresCastleDevelopmentRisk(state, move, side) > 0, "ignoresCastleDevelopment");
     add(badSacrificeCheckRisk(state, move, side, exchange) > 0, "badSacrificeCheck");
+    add(attackPieceLostAfterCheckRisk(state, move, side, exchange) > 0, "attackPieceLostAfterCheck");
+    add(noFollowUpCheckRisk(state, move, side, exchange) > 0, "noFollowUpCheck");
     add(unsupportedAttackProbeRisk(state, move, side) > 0, "unsupportedAttackProbe");
     add(looseMinorPieceShapeRisk(state, move, side) > 0, "looseMinorShape");
     add(centralBreakthroughRisk(state, move, side) > 0, "centralBreakthroughRisk");
@@ -1469,6 +1515,11 @@
       if (!p) return 0;
       const advancedBefore = side === "b" ? 8 - move.from.r : move.from.r;
       const advancedAfter = side === "b" ? 8 - move.to.r : move.to.r;
+      const king = findKing(state, side);
+      const home = side === "b" ? 8 : 0;
+      const kingMoved = king ? Math.abs(king.c - 4) + Math.abs(king.r - home) : 0;
+      const fromKingDist = king ? distance(move.from, king) : 9;
+      const toKingDist = king ? distance(move.to, king) : 9;
 
       if (p.type === "P") {
         if (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 2) score += 520;
@@ -1481,17 +1532,21 @@
 
       if (p.type === "S" && advancedAfter > advancedBefore) score += 190;
       score -= looseMinorPieceShapeRisk(state, move, side) * 4.5;
-      if (p.type === "G" && advancedAfter <= 2 && (move.to.c <= 3 || move.to.c >= 5)) score += 90;
+      if ((p.type === "G" || p.type === "S") && toKingDist < fromKingDist && ply < 30) score += p.type === "G" ? 170 : 140;
+      if ((p.type === "G" || p.type === "S") && toKingDist > fromKingDist + 1 && kingMoved === 0 && ply < 30) score -= p.type === "G" ? 260 : 220;
+      if (p.type === "G" && advancedAfter <= 2 && (move.to.c <= 3 || move.to.c >= 5)) score += 120;
       if (p.type === "G" && ply < 12 && advancedAfter > advancedBefore && move.from.c === move.to.c && move.to.c >= 3 && move.to.c <= 5) score -= 1600;
       if (p.type === "K") {
-        if (ply <= 24 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) score += 210;
-        if (ply <= 28 && (move.to.c <= 2 || move.to.c >= 6)) score += 180;
+        if (ply <= 24 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) score += 280;
+        if (ply <= 28 && (move.to.c <= 2 || move.to.c >= 6)) score += 240;
         if (ply < 44 && advancedAfter >= 2) score -= 9000;
         if (ply > 28 && !window.ShogiRules.inCheck(state, side)) score -= 260;
       }
 
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 5 && ply < 42) score -= move.capture ? 360 : 1100;
       if ((p.type === "R" || p.type === "B") && advancedAfter >= 6 && ply < 52) score -= move.capture ? 420 : 1400;
+      if ((p.type === "R" || p.type === "B") && kingMoved === 0 && ply < 30 && !move.capture) score -= 360;
+      if ((p.type === "R" || p.type === "B") && repetitionShuffleRisk(state, move) && ply < 34) score -= 520;
       if (p.type === "R" || p.type === "B") score -= earlyMajorPieceSortiePenalty(state, move, side) * (move.capture ? 0.55 : 1);
       if (p.type === "R" || p.type === "B") score += majorEscapeBonus(state, move, side);
       if (p.type !== "P" && p.type !== "K" && advancedAfter >= 6 && ply < 24 && !move.capture) score -= 420;

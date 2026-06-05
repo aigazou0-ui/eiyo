@@ -223,15 +223,17 @@
     const home = side === "b" ? 8 : 0;
     let score = 0;
     const kingMoved = Math.abs(king.c - 4) + Math.abs(king.r - home);
-    score += Math.min(150, kingMoved * 28);
-    if (king.c <= 2 || king.c >= 6) score += 90;
+    score += Math.min(190, kingMoved * 36);
+    if (king.c <= 2 || king.c >= 6) score += 125;
+    if (phase === "opening" && kingMoved === 0) score -= 70;
 
     for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
       const p = state.board[r][c];
       if (!p || p.owner !== side) continue;
       const nearKing = Math.abs(r - king.r) + Math.abs(c - king.c);
       const advanced = side === "b" ? home - r : r - home;
-      if ((p.type === "G" || p.type === "S") && nearKing <= 2) score += p.type === "G" ? 42 : 34;
+      if ((p.type === "G" || p.type === "S") && nearKing <= 2) score += p.type === "G" ? 56 : 46;
+      if ((p.type === "G" || p.type === "S") && phase === "opening" && nearKing >= 5 && advanced >= 3) score -= p.type === "G" ? 70 : 58;
       if (p.type === "S" && advanced >= 1 && advanced <= 3) score += 30;
       if (p.type === "N" && advanced === 0 && phase !== "opening") score -= 24;
       if (p.type === "P" && advanced === 1) score += 8;
