@@ -29,7 +29,7 @@
     const cfg = Object.assign({}, LEVELS[lv] || LEVELS[2]);
     if (options.mobile) {
       cfg.mobile = true;
-      cfg.time = Math.min(cfg.time, lv >= 9 ? 1500 : lv >= 7 ? 900 : lv >= 5 ? 650 : 300);
+      cfg.time = Math.min(cfg.time, lv >= 9 ? 1200 : lv >= 7 ? 850 : lv >= 5 ? 650 : 300);
       cfg.depth = Math.min(cfg.depth, lv >= 9 ? 4 : lv >= 6 ? 3 : lv >= 5 ? 2 : cfg.depth);
       cfg.iterative = lv >= 7;
       cfg.reply = Math.min(cfg.reply || 0, lv >= 9 ? 6 : lv >= 7 ? 4 : lv >= 5 ? 2 : 1);
@@ -39,7 +39,7 @@
       cfg.mobileBranchLimit = lv >= 9 ? 12 : lv >= 7 ? 8 : 6;
       cfg.mobileQLimit = lv >= 9 ? 8 : 6;
       cfg.mobileMateDepth = options.mobileMateDepth || 1;
-      cfg.nodeLimit = Math.min(cfg.nodeLimit || 6000, lv >= 9 ? 22000 : lv >= 7 ? 11000 : lv >= 5 ? 4500 : 1600);
+      cfg.nodeLimit = Math.min(cfg.nodeLimit || 6000, lv >= 9 ? 14000 : lv >= 7 ? 9000 : lv >= 5 ? 4500 : 1600);
     }
     if (Number.isFinite(options.timeLimit)) cfg.time = Math.max(80, Number(options.timeLimit));
     if (Number.isFinite(options.depthLimit)) cfg.depth = Math.max(1, Math.min(8, Number(options.depthLimit)));
@@ -198,6 +198,80 @@
     if (advanced >= 3) risk += defended ? 120 : 260;
     if (state.history.length < 36) risk += defended ? 80 : 220;
     return risk;
+  }
+
+  function pawnPushProfile(state, move, side) {
+    const empty = { isPawnPush: false, classification: "none", positiveReasons: [], debugReasons: [] };
+    if (!move || move.drop || !move.from) return empty;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== "P") return empty;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const ownKing = findKing(state, side);
+    const exchange = exchangeAfterMove(state, move, side);
+    const rookPawn = (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 7) ||
+      (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 1);
+    const bishopLine = (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 2) ||
+      (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 6);
+    const beforeKingAttack = ownKing ? window.ShogiRules.attacksSquare(state, enemy, ownKing) : false;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    let attacksEnemyPiece = false;
+    let supportsSilver = false;
+    const silverR = side === "b" ? move.to.r - 1 : move.to.r + 1;
+    if (silverR >= 0 && silverR < 9) {
+      const silver = state.board[silverR][move.to.c];
+      if (silver && silver.owner === side && silver.type === "S") supportsSilver = true;
+    }
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, move.to.r, move.to.c, true)) {
+      const target = state.board[pseudo.to.r][pseudo.to.c];
+      if (target && target.owner === enemy && target.type !== "K") attacksEnemyPiece = true;
+      if (target && target.owner === side && target.type === "S") supportsSilver = true;
+    }
+    const afterKingAttack = ownKing ? window.ShogiRules.attacksSquare(state, enemy, ownKing) : false;
+    window.ShogiBoard.undoMove(state, undo);
+
+    const positiveReasons = [];
+    const debugReasons = [];
+    if (rookPawn) positiveReasons.push("rookPawnDevelopment");
+    if (bishopLine) positiveReasons.push("bishopLineDevelopment");
+    if (supportsSilver) positiveReasons.push("pawnSupportsSilver");
+    if (pressure > 0 || attacksEnemyPiece) positiveReasons.push("pawnCreatesAttack");
+    if (move.capture || exchange.see >= 40) positiveReasons.push("pawnExchangeAim");
+
+    const weakensKing = !beforeKingAttack && afterKingAttack && ownKing && distance(move.from, ownKing) <= 3;
+    const opensEnemyLine = weakensKing;
+    const noFollowUp = !rookPawn && !bishopLine && !supportsSilver && pressure <= 0 && !attacksEnemyPiece && !move.capture && exchange.see <= 0;
+    if (weakensKing) debugReasons.push("pawnPushWeakensKing");
+    if (opensEnemyLine) debugReasons.push("pawnPushOpensEnemyLine");
+    if (noFollowUp) debugReasons.push("pawnPushHasNoFollowUp");
+
+    let classification = "neutral";
+    if (isOpeningPawnSacrifice(state, move, side, exchange) || loosePawnPushRisk(state, move, side) > 0 || weakensKing || (attacked && !defended && noFollowUp)) {
+      classification = "bad";
+    } else if (positiveReasons.length || (defended && !attacked)) {
+      classification = "good";
+      positiveReasons.unshift("goodPawnPush");
+    } else {
+      debugReasons.push("neutralPawnPush");
+    }
+    return {
+      isPawnPush: true,
+      classification,
+      attacked: !!attacked,
+      defended: !!defended,
+      weakensKing,
+      opensEnemyLine,
+      noFollowUp,
+      pressure,
+      attacksEnemyPiece,
+      supportsSilver,
+      exchangeSee: exchange.see,
+      positiveReasons,
+      debugReasons
+    };
   }
 
   function unsupportedDropRisk(state, move, side) {
@@ -375,6 +449,8 @@
     const fromWing = Math.abs(move.from.c - 4);
     const toWing = Math.abs(move.to.c - 4);
     const advanced = advancedRank(side, move.to);
+    const profile = kingMoveProfile(state, move, side);
+    if (profile.classification === "good") return 0;
     let penalty = state.history.length < 18 ? 80 : 120;
     if (state.history.length < 44 && advanced >= 2) penalty += 7000 + (44 - state.history.length) * 90;
     if (state.history.length < 28 && advanced >= 1 && toWing > 1) penalty += 420;
@@ -382,6 +458,52 @@
     if (toWing < fromWing) penalty += 180;
     if (toCastle < fromCastle && fromWing >= 2) penalty += 180;
     return penalty;
+  }
+
+  function kingMoveProfile(state, move, side) {
+    const empty = { isKingMove: false, classification: "none", positiveReasons: [], debugReasons: [] };
+    if (!move || move.drop || !move.from) return empty;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== "K") return empty;
+    const enemy = window.ShogiBoard.opponent(side);
+    const home = side === "b" ? 8 : 0;
+    const fromWing = Math.abs(move.from.c - 4);
+    const toWing = Math.abs(move.to.c - 4);
+    const advanced = advancedRank(side, move.to);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    let nearbyGuards = 0;
+    for (let r = Math.max(0, move.to.r - 2); r <= Math.min(8, move.to.r + 2); r += 1) {
+      for (let c = Math.max(0, move.to.c - 2); c <= Math.min(8, move.to.c + 2); c += 1) {
+        const p = state.board[r][c];
+        if (p && p.owner === side && (p.type === "G" || p.type === "S")) nearbyGuards += 1;
+      }
+    }
+    let escapeRoutes = 0;
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, move.to.r, move.to.c, true)) {
+      if (!window.ShogiRules.attacksSquare(state, enemy, pseudo.to)) escapeRoutes += 1;
+    }
+    window.ShogiBoard.undoMove(state, undo);
+
+    const positiveReasons = [];
+    const debugReasons = [];
+    if (fromWing === 0 && toWing > 0 && advanced < 2) positiveReasons.push("leavesStaticKing");
+    if (toWing > fromWing && advanced < 2) positiveReasons.push("kingMovesTowardCastle");
+    if (nearbyGuards >= 2) positiveReasons.push("kingMovesTowardGoldSilver");
+    if (attacked) debugReasons.push("kingMovesTowardDanger");
+    if (advanced >= 2) debugReasons.push("badKingMove");
+    if (nearbyGuards <= 0) debugReasons.push("kingLeavesDefense");
+    if (escapeRoutes <= 1) debugReasons.push("kingReducesEscapeRoutes");
+
+    let classification = "neutral";
+    if (attacked || advanced >= 2 || nearbyGuards <= 0 || escapeRoutes <= 1) classification = "bad";
+    else if (positiveReasons.length) {
+      classification = "good";
+      positiveReasons.unshift("goodCastleKingMove");
+    } else {
+      debugReasons.push("neutralKingMove");
+    }
+    return { isKingMove: true, classification, attacked: !!attacked, nearbyGuards, escapeRoutes, advanced, fromWing, toWing, positiveReasons, debugReasons };
   }
 
   function earlyMajorPieceSortiePenalty(state, move, side) {
@@ -478,6 +600,10 @@
     if (!move || !move.to || move.capture || move.promote || window.ShogiRules.inCheck(state, side)) return 0;
     const piece = move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
     if (!piece || piece.type === "K") return 0;
+    if (piece.type === "P") {
+      const profile = pawnPushProfile(state, move, side);
+      if (profile.classification === "good" || profile.attacksEnemyPiece || profile.supportsSilver) return 0;
+    }
     if (piece.type === "S") {
       const profile = silverAdvanceProfile(state, move, side);
       if (profile.classification === "good" || profile.supportedAttack || (profile.defended && profile.followUp)) return 0;
@@ -1268,6 +1394,9 @@
     if (isOpeningPawnSacrifice(state, move, side, exchange)) {
       risk += 680 + level * 75;
     }
+    const pawnProfile = piece && piece.type === "P" ? pawnPushProfile(state, move, side) : null;
+    if (pawnProfile && pawnProfile.classification === "bad") risk += 360 + level * 55;
+    if (pawnProfile && (pawnProfile.weakensKing || pawnProfile.opensEnemyLine)) risk += 520 + level * 70;
     if (isEarlyBishopHeadPawnPush(state, move, side)) {
       risk += 9000 + level * 420;
     }
@@ -1294,9 +1423,14 @@
     risk += unsupportedDropRisk(state, move, side) * (0.75 + level * 0.08);
     risk += earlyMajorDropPenalty(state, move, side) * (0.9 + level * 0.08);
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
+    const kingProfile = piece && piece.type === "K" ? kingMoveProfile(state, move, side) : null;
+    if (kingProfile && kingProfile.classification === "bad") risk += 520 + level * 80;
     risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
     risk += quietMajorPromotionPenalty(state, move, side) * (0.9 + level * 0.08);
-    risk += repetitionShuffleRisk(state, move) * (0.7 + level * 0.06);
+    const shuffleRisk = repetitionShuffleRisk(state, move);
+    risk += shuffleRisk * (0.7 + level * 0.06);
+    const repetition = shuffleRisk || isRecentReverse(state, move) ? repetitionProfile(state, move) : null;
+    if (repetition && repetition.classification === "bad") risk += 300 + level * 45;
 
     return risk;
   }
@@ -1370,6 +1504,9 @@
       positiveReasons: positiveReasons(state, item.move, state.turn),
       debugReasons: debugReasons(state, item.move, state.turn),
       silverDebug: silverDebug(state, item.move, state.turn),
+      pawnPushDebug: pawnPushDebug(state, item.move, state.turn),
+      kingMoveDebug: kingMoveDebug(state, item.move, state.turn),
+      repetitionDebug: repetitionDebug(state, item.move),
       reason: ""
     });
     const annotated = Object.assign({}, item, { debug, selected: !!selected });
@@ -1383,11 +1520,22 @@
       if (condition) reasons.push(name);
     };
     add(isOpeningPawnSacrifice(state, move, side, exchange), "openingPawnSacrifice");
+    const pawnProfile = pawnPushProfile(state, move, side);
+    add(pawnProfile.classification === "bad", "badPawnPush");
+    add(pawnProfile.weakensKing, "pawnPushWeakensKing");
+    add(pawnProfile.opensEnemyLine, "pawnPushOpensEnemyLine");
+    add(pawnProfile.noFollowUp && pawnProfile.classification === "bad", "pawnPushHasNoFollowUp");
+    add(pawnProfile.classification === "bad" && unsupportedAttackProbeRisk(state, move, side) > 0, "unsupportedPawnProbe");
     add(isEarlyBishopHeadPawnPush(state, move, side), "earlyBishopHeadPawnPush");
     add(loosePawnPushRisk(state, move, side) > 0, "loosePawnPush");
     add(unsupportedDropRisk(state, move, side) > 0, "unsupportedDrop");
     add(earlyMajorDropPenalty(state, move, side) > 0, "earlyMajorDrop");
     add(kingWanderPenalty(state, move, side) > 0, "kingWander");
+    const kingProfile = kingMoveProfile(state, move, side);
+    add(kingProfile.classification === "bad", "badKingMove");
+    add(kingProfile.attacked, "kingMovesTowardDanger");
+    add(kingProfile.isKingMove && kingProfile.nearbyGuards <= 0, "kingLeavesDefense");
+    add(kingProfile.isKingMove && kingProfile.escapeRoutes <= 1, "kingReducesEscapeRoutes");
     add(earlyMajorPieceSortiePenalty(state, move, side) > 0, "earlyMajorSortie");
     add(badBishopMoveRisk(state, move, side) > 0, "badBishopMove");
     add(trappedBishopRisk(state, move, side) > 0, "trappedBishop");
@@ -1413,9 +1561,11 @@
     add(majorSacrificeRisk(state, move, side, exchange) > 0, "majorSacrificeRisk");
     add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0, "aimlessEarlyMajorCapture");
     add(quietMajorPromotionPenalty(state, move, side) > 0, "quietMajorPromotion");
-    add(repetitionShuffleRisk(state, move) > 0, "repetitionShuffle");
-    add(repetitionShuffleRisk(state, move) > 0, "repeatedPieceMove");
-    add(isRecentReverse(state, move), "pointlessRetreat");
+    const repetition = repetitionProfile(state, move);
+    add(repetition.classification === "bad" && repetitionShuffleRisk(state, move) > 0, "repetitionShuffle");
+    add(repetition.classification === "bad" && repetitionShuffleRisk(state, move) > 0, "repeatedPieceMove");
+    add(repetition.classification === "bad" && isRecentReverse(state, move), "pointlessRetreat");
+    add(repetition.classification === "bad" && repetition.isRepeatedMove, "noProgressMove");
     add(exchange && exchange.hanging, "hangingAfterMove");
     add(exchange && exchange.see < -80 && !exchange.check && !exchange.mateThreat, "badStaticExchange");
     add(allowsOpponentMateInOne(state, move), "allowsOpponentMateInOne");
@@ -1428,6 +1578,12 @@
     if (profile.isSilverMove) {
       for (const reason of profile.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
     }
+    const pawn = pawnPushProfile(state, move, side);
+    if (pawn.isPawnPush) for (const reason of pawn.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    const king = kingMoveProfile(state, move, side);
+    if (king.isKingMove) for (const reason of king.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    const repetition = repetitionProfile(state, move);
+    if (repetition.isRepeatedMove) for (const reason of repetition.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
     return reasons;
   }
 
@@ -1438,6 +1594,18 @@
       if (profile.classification === "neutral") reasons.push("neutralSilverAdvance");
       for (const reason of profile.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
     }
+    const pawn = pawnPushProfile(state, move, side);
+    if (pawn.isPawnPush) {
+      if (pawn.classification === "neutral") reasons.push("neutralPawnPush");
+      for (const reason of pawn.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    }
+    const king = kingMoveProfile(state, move, side);
+    if (king.isKingMove) {
+      if (king.classification === "neutral") reasons.push("neutralKingMove");
+      for (const reason of king.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    }
+    const repetition = repetitionProfile(state, move);
+    if (repetition.isRepeatedMove) for (const reason of repetition.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
     return reasons;
   }
 
@@ -1459,6 +1627,50 @@
     };
   }
 
+  function pawnPushDebug(state, move, side) {
+    const profile = pawnPushProfile(state, move, side);
+    if (!profile.isPawnPush) return null;
+    return {
+      classification: profile.classification,
+      attacked: profile.attacked,
+      defended: profile.defended,
+      weakensKing: profile.weakensKing,
+      opensEnemyLine: profile.opensEnemyLine,
+      noFollowUp: profile.noFollowUp,
+      pressure: profile.pressure,
+      attacksEnemyPiece: profile.attacksEnemyPiece,
+      supportsSilver: profile.supportsSilver,
+      exchangeSee: profile.exchangeSee
+    };
+  }
+
+  function kingMoveDebug(state, move, side) {
+    const profile = kingMoveProfile(state, move, side);
+    if (!profile.isKingMove) return null;
+    return {
+      classification: profile.classification,
+      attacked: profile.attacked,
+      nearbyGuards: profile.nearbyGuards,
+      escapeRoutes: profile.escapeRoutes,
+      advanced: profile.advanced,
+      fromWing: profile.fromWing,
+      toWing: profile.toWing
+    };
+  }
+
+  function repetitionDebug(state, move) {
+    const profile = repetitionProfile(state, move);
+    if (!profile.isRepeatedMove) return null;
+    return {
+      classification: profile.classification,
+      risk: profile.risk,
+      recentReverse: profile.recentReverse,
+      beforeAttacked: profile.beforeAttacked,
+      afterAttacked: profile.afterAttacked,
+      pressure: profile.pressure
+    };
+  }
+
   function annotateList(state, candidates, level, selectedMove, forceBest, phase, options = {}) {
     return (candidates || []).map(item => withDebug(
       state,
@@ -1473,14 +1685,12 @@
 
   function safeFastSelectionItems(state, items, level, cfg) {
     const annotated = (items || []).map(item => {
-      const activeLevel = level || 10;
-      const activeCfg = cfg || config(activeLevel, { mobile: true });
-      const exchange = exchangeAfterMove(state, item.move, state.turn);
+      const shapeRisk = looseMinorPieceShapeRisk(state, item.move, state.turn) +
+        (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0);
       return Object.assign({}, item, {
-        shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn) +
-          (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0),
-        fastRisk: tacticalRisk(state, item.move, state.turn, activeLevel, activeCfg),
-        badMoveReasons: badMoveReasons(state, item.move, state.turn, activeLevel, activeCfg, exchange)
+        shapeRisk,
+        fastRisk: fastShapeRisk(state, item.move, state.turn) + shapeRisk,
+        badMoveReasons: []
       });
     });
     const severeRisk = reasons => {
@@ -1675,11 +1885,14 @@
       const toKingDist = king ? distance(move.to, king) : 9;
 
       if (p.type === "P") {
+        const pawnProfile = pawnPushProfile(state, move, side);
         if (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 2) score += 520;
         if (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 6) score += 520;
         if (side === "b" && move.from.r === 6 && move.to.r === 5 && move.from.c === 7) score += 260;
         if (side === "w" && move.from.r === 2 && move.to.r === 3 && move.from.c === 1) score += 260;
         if (isEarlyBishopHeadPawnPush(state, move, side)) score -= 12000;
+        if (pawnProfile.classification === "good") score += 90;
+        if (pawnProfile.classification === "bad") score -= 360;
         score -= loosePawnPushRisk(state, move, side) * 2.4;
       }
 
@@ -1696,6 +1909,9 @@
       if (p.type === "G" && advancedAfter <= 2 && (move.to.c <= 3 || move.to.c >= 5)) score += 120;
       if (p.type === "G" && ply < 12 && advancedAfter > advancedBefore && move.from.c === move.to.c && move.to.c >= 3 && move.to.c <= 5) score -= 1600;
       if (p.type === "K") {
+        const kingProfile = kingMoveProfile(state, move, side);
+        if (kingProfile.classification === "good") score += 180;
+        if (kingProfile.classification === "bad") score -= 520;
         if (ply <= 24 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) score += 280;
         if (ply <= 28 && (move.to.c <= 2 || move.to.c >= 6)) score += 240;
         if (ply < 44 && advancedAfter >= 2) score -= 9000;
@@ -1717,6 +1933,9 @@
     if (move.drop) score -= earlyMajorDropPenalty(state, move, side) * 1.2;
     score -= centralBreakthroughRisk(state, move, side) * 0.9;
     if (givesCheck(state, move, side) && ply < 32 && !move.capture) score -= 360;
+    const repetition = shuffleRisk || isRecentReverse(state, move) ? repetitionProfile(state, move) : null;
+    if (repetition && repetition.classification === "good") score += 160;
+    if (repetition && repetition.classification === "bad") score -= 220;
     return score + momentum - shuffleRisk * 0.75;
   }
 
@@ -1819,6 +2038,46 @@
     return Math.round((reverseCount * 280 + sameCount * 190 + fromToLoop * 70) * majorScale * lateScale);
   }
 
+  function repetitionProfile(state, move) {
+    const empty = { isRepeatedMove: false, classification: "none", positiveReasons: [], debugReasons: [] };
+    const risk = repetitionShuffleRisk(state, move);
+    const recentReverse = isRecentReverse(state, move);
+    if (!risk && !recentReverse) return empty;
+    const side = state.turn;
+    const piece = movingPiece(state, move);
+    const enemy = window.ShogiBoard.opponent(side);
+    const beforeAttacked = piece && move.from ? window.ShogiRules.attacksSquare(state, enemy, move.from) : false;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const afterAttacked = move.to ? window.ShogiRules.attacksSquare(state, enemy, move.to) : false;
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    const pressure = move.to ? attacksKingZoneFrom(state, move.to, side, findKing(state, enemy)) : 0;
+    window.ShogiBoard.undoMove(state, undo);
+    const positiveReasons = [];
+    const debugReasons = [];
+    if (beforeAttacked && !afterAttacked) positiveReasons.push("escapeHangingPiece", "tacticalRetreat");
+    if (gives) positiveReasons.push("improvesPieceActivity");
+    if (pressure > 0) positiveReasons.push("improvesPieceActivity");
+    if (recentReverse) debugReasons.push("pointlessRetreat");
+    if (risk) debugReasons.push("repetitionShuffle", "repeatedPieceMove");
+    let classification = "bad";
+    if (positiveReasons.length) classification = "good";
+    else debugReasons.push("noProgressMove");
+    return { isRepeatedMove: true, classification, risk, recentReverse, beforeAttacked: !!beforeAttacked, afterAttacked: !!afterAttacked, pressure, positiveReasons, debugReasons };
+  }
+
+  function fastStaticExchangePenalty(state, move, side) {
+    if (!move) return 0;
+    const exchange = exchangeAfterMove(state, move, side);
+    let penalty = 0;
+    if (exchange.hanging) penalty += 900000;
+    if (exchange.see < -140 && !exchange.check && !exchange.mateThreat) {
+      penalty += 650000 + Math.abs(exchange.see) * 120;
+    }
+    const piece = movingPiece(state, move);
+    if (piece && (piece.type === "R" || piece.type === "B") && exchange.see < -40) penalty += 500000;
+    return penalty;
+  }
+
   function fastMobileCandidates(state, moves) {
     const side = state.turn;
     let candidateMoves = moves.filter(move =>
@@ -1849,8 +2108,14 @@
       .map(move => ({ move, score: cheapOrderingScore(state, move, null), depth: 1, nodes: moves.length, pv: [move] }))
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(28, moves.length));
+    const staticSafeOrdered = state.history.length < 60 ? ordered
+      .map((item, index) => index < 8
+        ? Object.assign({}, item, { score: item.score - fastStaticExchangePenalty(state, item.move, side) })
+        : item)
+      .sort((a, b) => b.score - a.score)
+      : ordered;
     if (state.history.length >= 22 || moves.length > 56) {
-      const rescored = preferNoImmediateMate(state, ordered, 4)
+      const rescored = preferNoImmediateMate(state, staticSafeOrdered, 4)
         .slice(0, 6)
         .map(item => {
           const undo = window.ShogiBoard.makeMove(state, item.move);
@@ -1866,7 +2131,7 @@
         .sort((a, b) => b.score - a.score);
       return preferNoImmediateMate(state, rescored, 4).slice(0, 3);
     }
-    const rescored = preferNoImmediateMate(state, ordered, 4)
+    const rescored = preferNoImmediateMate(state, staticSafeOrdered, 4)
       .map((item, index) => {
         if (index >= 14) return item;
         const undo = window.ShogiBoard.makeMove(state, item.move);
@@ -2101,7 +2366,7 @@
       return { bestMove: candidates[0].move || fallbackMove, candidates, nodes: moves.length, depth: 1 };
     }
 
-    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 20 && (moves.length > 34 || state.history.length >= 24)) {
+    if (cfg.mobile && !cfg.deepThinking && state.history.length >= 20) {
       const ranked = fastMobileCandidates(state, moves);
       return { bestMove: (ranked[0] && ranked[0].move) || fallbackMove, candidates: ranked, nodes: moves.length, depth: 1 };
     }

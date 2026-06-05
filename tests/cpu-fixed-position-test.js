@@ -309,6 +309,38 @@ function chasedSilverState() {
   return state;
 }
 
+function pawnSupportsSilverState() {
+  const state = emptyState("b", 20);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][4] = piece("P", "b");
+  state.board[4][4] = piece("S", "b");
+  return state;
+}
+
+function badPawnPushState() {
+  const state = emptyState("b", 20);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][4] = piece("P", "b");
+  state.board[4][4] = piece("R", "w");
+  return state;
+}
+
+function badKingMoveState() {
+  const state = emptyState("b", 20);
+  state.board[7][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  return state;
+}
+
+function exposedKingMoveState() {
+  const state = emptyState("b", 20);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  return state;
+}
+
 function run() {
   const failures = [];
 
@@ -532,6 +564,60 @@ function run() {
   {
     const state = unsupportedSilverState();
     failures.push(assertTest("attack-probe-unsupported-is-bad", hasReasonForMove(state, "5e5d", ["unsupportedSilverAdvance", "badSilverOverextension"]), { moveUsi: "5e5d", debug: debugForUsi(state, "5e5d") }));
+  }
+
+  {
+    const state = context.ShogiBoard.newState();
+    failures.push(assertTest("pawn-good-rook-pawn-development-no-bad", lacksReasonForMove(state, "2g2f", ["badPawnPush", "unsupportedAttackProbe", "loosePawnPush"]), { moveUsi: "2g2f", debug: debugForUsi(state, "2g2f") }));
+    failures.push(assertTest("pawn-good-rook-pawn-development-positive", hasPositiveReasonForMove(state, "2g2f", ["goodPawnPush", "rookPawnDevelopment"]), { moveUsi: "2g2f", debug: debugForUsi(state, "2g2f") }));
+  }
+
+  {
+    const state = context.ShogiBoard.newState();
+    failures.push(assertTest("pawn-good-bishop-line-development-no-bad", lacksReasonForMove(state, "7g7f", ["badPawnPush", "unsupportedAttackProbe", "loosePawnPush"]), { moveUsi: "7g7f", debug: debugForUsi(state, "7g7f") }));
+    failures.push(assertTest("pawn-good-bishop-line-development-positive", hasPositiveReasonForMove(state, "7g7f", ["goodPawnPush", "bishopLineDevelopment"]), { moveUsi: "7g7f", debug: debugForUsi(state, "7g7f") }));
+  }
+
+  {
+    const state = pawnSupportsSilverState();
+    failures.push(assertTest("pawn-good-supports-silver", hasPositiveReasonForMove(state, "5g5f", ["goodPawnPush", "pawnSupportsSilver"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+    failures.push(assertTest("pawn-supports-silver-no-probe", lacksReasonForMove(state, "5g5f", ["badPawnPush", "unsupportedPawnProbe", "unsupportedAttackProbe"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = badPawnPushState();
+    failures.push(assertTest("pawn-bad-unsupported-pawn-push", hasReasonForMove(state, "5g5f", ["badPawnPush", "openingPawnSacrifice", "loosePawnPush"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = context.ShogiBoard.newState();
+    failures.push(assertTest("pawn-bad-bishop-head-pawn", hasReasonForMove(state, "8g8f", ["earlyBishopHeadPawnPush"]), { moveUsi: "8g8f", debug: debugForUsi(state, "8g8f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d"]);
+    failures.push(assertTest("king-good-castle-move-no-wander", lacksReasonForMove(state, "5i6h", ["kingWander", "badKingMove", "kingMovesTowardDanger"]), { moveUsi: "5i6h", debug: debugForUsi(state, "5i6h") }));
+    failures.push(assertTest("king-good-castle-move-positive", hasPositiveReasonForMove(state, "5i6h", ["goodCastleKingMove", "kingMovesTowardCastle"]), { moveUsi: "5i6h", debug: debugForUsi(state, "5i6h") }));
+  }
+
+  {
+    const state = badKingMoveState();
+    failures.push(assertTest("king-bad-forward-move", hasReasonForMove(state, "5h5g", ["kingWander", "badKingMove", "kingLeavesDefense"]), { moveUsi: "5h5g", debug: debugForUsi(state, "5h5g") }));
+  }
+
+  {
+    const state = exposedKingMoveState();
+    failures.push(assertTest("king-bad-leaves-defense", hasReasonForMove(state, "5i5h", ["badKingMove", "kingLeavesDefense"]), { moveUsi: "5i5h", debug: debugForUsi(state, "5i5h") }));
+  }
+
+  {
+    const state = bishopShuffleState();
+    failures.push(assertTest("repetition-bad-pointless-retreat", hasReasonForMove(state, "7g8h", ["repetitionShuffle", "pointlessRetreat", "noProgressMove"]), { moveUsi: "7g8h", debug: debugForUsi(state, "7g8h") }));
+  }
+
+  {
+    const state = bishopShuffleState();
+    failures.push(assertTest("repetition-debug-no-progress", (debugForUsi(state, "7g8h").repetitionDebug || {}).classification === "bad", { moveUsi: "7g8h", debug: debugForUsi(state, "7g8h") }));
   }
 
   const failed = failures.filter(Boolean);
