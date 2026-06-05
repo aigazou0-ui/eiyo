@@ -101,6 +101,22 @@ function attacksKingZoneFrom(state, square, side, enemyKing) {
   return count;
 }
 
+function localSupport(state, square, side) {
+  let support = 0;
+  for (let dr = -2; dr <= 2; dr += 1) {
+    for (let dc = -2; dc <= 2; dc += 1) {
+      if (!dr && !dc) continue;
+      const r = square.r + dr;
+      const c = square.c + dc;
+      if (!context.ShogiBoard.inside(r, c)) continue;
+      const p = state.board[r][c];
+      if (!p || p.owner !== side || p.type === "K") continue;
+      support += Math.abs(dr) + Math.abs(dc) <= 1 ? 2 : 1;
+    }
+  }
+  return support;
+}
+
 function isRecentReverse(state, move, lookback) {
   if (!move || move.drop || move.capture || !move.from) return false;
   for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - lookback); i -= 1) {
@@ -206,7 +222,8 @@ function boardShapeIssues(state, ply) {
         const square = { r, c };
         const mobility = bishopMobility(state, square, side);
         const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
-        if ((c === 0 || c === 8) && mobility <= 5 && pressure === 0 && distance(square, ownKing) > 2) {
+        const support = localSupport(state, square, side);
+        if ((c === 0 || c === 8) && mobility <= 9 && pressure === 0 && support < 4 && distance(square, ownKing) > 2) {
           issues.push({
             ply,
             severity: 4,

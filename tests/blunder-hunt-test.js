@@ -288,7 +288,8 @@ function inspectBoardShape(state, ply) {
         const square = { r, c };
         const mobility = bishopMobility(state, square, side);
         const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
-        if ((c === 0 || c === 8) && mobility <= 5 && pressure === 0 && distance(square, ownKing) > 2) {
+        const support = localSupport(state, square, side);
+        if ((c === 0 || c === 8) && mobility <= 9 && pressure === 0 && support < 4 && distance(square, ownKing) > 2) {
           issues.push({
             severity: 4,
             type: "edge-stranded-bishop-board",
@@ -296,7 +297,8 @@ function inspectBoardShape(state, ply) {
             side: sideName(side),
             move: "board",
             mobility,
-            pressure
+            pressure,
+            support
           });
         }
       }

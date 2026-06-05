@@ -1,6 +1,6 @@
 (function () {
   const els = {};
-  const STATE_VERSION = 27;
+  const STATE_VERSION = 28;
   const INITIAL_CLOCK_SECONDS = 600;
   let state;
   let playerSide = "b";

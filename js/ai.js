@@ -284,6 +284,63 @@
     return true;
   }
 
+  function badEdgeBishopBoard(state, side) {
+    if (!state || state.history.length >= 72) return false;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const ownKing = findKing(state, side);
+    for (let r = 0; r < 9; r += 1) {
+      for (let c = 0; c < 9; c += 1) {
+        const piece = state.board[r][c];
+        if (!piece || piece.owner !== side || piece.type !== "B" || piece.promoted) continue;
+        if (c !== 0 && c !== 8) continue;
+        const square = { r, c };
+        const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
+        const support = localAttackSupport(state, square, side, enemyKing);
+        const ownKingDist = distance(square, ownKing);
+        let mobility = 0;
+        for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+          let rr = r + dr;
+          let cc = c + dc;
+          while (rr >= 0 && rr < 9 && cc >= 0 && cc < 9) {
+            const target = state.board[rr][cc];
+            if (!target) mobility += 1;
+            else {
+              if (target.owner !== side) mobility += 1;
+              break;
+            }
+            rr += dr;
+            cc += dc;
+          }
+        }
+        if (pressure <= 0 && support < 4 && ownKingDist > 2 && mobility <= 9) return true;
+      }
+    }
+    return false;
+  }
+
+  function hasUnpromotedEdgeBishop(state, side) {
+    if (!state || state.history.length >= 72) return false;
+    for (let r = 0; r < 9; r += 1) {
+      for (const c of [0, 8]) {
+        const piece = state.board[r][c];
+        if (piece && piece.owner === side && piece.type === "B" && !piece.promoted) return true;
+      }
+    }
+    return false;
+  }
+
+  function leavesBadEdgeBishopBoard(state, move, side) {
+    if (!move || state.history.length >= 72) return false;
+    const moving = (!move.drop && move.from) ? state.board[move.from.r][move.from.c] : null;
+    const bishopCanReachEdge = moving && moving.type === "B" && !moving.promoted && (move.to.c === 0 || move.to.c === 8);
+    if (!bishopCanReachEdge && !hasUnpromotedEdgeBishop(state, side)) return false;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const bad = badEdgeBishopBoard(state, side);
+    window.ShogiBoard.undoMove(state, undo);
+    return bad;
+  }
+
   function allowsOpponentMateInOne(state, move) {
     if (!move) return false;
     const undo = window.ShogiBoard.makeMove(state, move);
@@ -1021,7 +1078,8 @@
 
   function safeFastSelectionItems(state, items) {
     const annotated = (items || []).map(item => Object.assign({}, item, {
-      shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn)
+      shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn) +
+        (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0)
     }));
     const safe = annotated.filter(item => item.shapeRisk < 700);
     return (safe.length ? safe : annotated)
@@ -1340,7 +1398,8 @@
       !forbiddenEarlyMajorDrop(state, move, side) &&
       !forbiddenEarlyKingExposure(state, move, side) &&
       !forbiddenEarlyMajorAdvance(state, move, side) &&
-      !forbiddenEarlyEdgeBishop(state, move, side)
+      !forbiddenEarlyEdgeBishop(state, move, side) &&
+      !leavesBadEdgeBishopBoard(state, move, side)
     );
     if (!window.ShogiRules.inCheck(state, side) && state.history.length < 44) {
       const noKingExposure = candidateMoves.filter(move => {
@@ -1575,7 +1634,8 @@
       !forbiddenEarlyMajorDrop(state, move, state.turn) &&
       !forbiddenEarlyKingExposure(state, move, state.turn) &&
       !forbiddenEarlyMajorAdvance(state, move, state.turn) &&
-      !forbiddenEarlyEdgeBishop(state, move, state.turn)
+      !forbiddenEarlyEdgeBishop(state, move, state.turn) &&
+      !leavesBadEdgeBishopBoard(state, move, state.turn)
     );
     if (!moves.length) moves = rawMoves;
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };

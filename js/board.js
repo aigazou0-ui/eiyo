@@ -33,7 +33,7 @@
       history: [],
       evalHistory: [50],
       gameOver: false,
-      version: 26,
+      version: 28,
       message: "先手番です。"
     };
   }
