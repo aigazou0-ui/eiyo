@@ -478,6 +478,10 @@
     if (!move || !move.to || move.capture || move.promote || window.ShogiRules.inCheck(state, side)) return 0;
     const piece = move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
     if (!piece || piece.type === "K") return 0;
+    if (piece.type === "S") {
+      const profile = silverAdvanceProfile(state, move, side);
+      if (profile.classification === "good" || profile.supportedAttack || (profile.defended && profile.followUp)) return 0;
+    }
     const enemy = window.ShogiBoard.opponent(side);
     const enemyKing = findKing(state, enemy);
     const beforeDist = (!move.drop && move.from) ? distance(move.from, enemyKing) : 9;
@@ -489,8 +493,16 @@
     const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
     const support = localAttackSupport(state, move.to, side, enemyKing);
     const afterDist = distance(move.to, enemyKing);
+    let attacksEnemyPiece = false;
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, move.to.r, move.to.c, true)) {
+      const target = state.board[pseudo.to.r][pseudo.to.c];
+      if (target && target.owner === enemy && target.type !== "K") {
+        attacksEnemyPiece = true;
+        break;
+      }
+    }
     window.ShogiBoard.undoMove(state, undo);
-    if (gives || pressure > 0 || support >= 4 || (defended && !attacked)) return 0;
+    if (gives || attacksEnemyPiece || pressure > 0 || support >= 4 || (defended && !attacked)) return 0;
     if (afterDist > beforeDist && advanced < 4) return 0;
     if (piece.type === "P" && advanced >= 3) return defended ? 220 : 520;
     if (piece.type === "S" || piece.type === "N" || piece.type === "L") return defended ? 160 : 340;
@@ -596,17 +608,108 @@
     return 0;
   }
 
+  function pawnCanChaseSquare(state, side, square) {
+    if (!square) return false;
+    const enemy = window.ShogiBoard.opponent(side);
+    const sourceR = enemy === "b" ? square.r + 1 : square.r - 1;
+    if (sourceR < 0 || sourceR >= 9) return false;
+    const pawn = state.board[sourceR][square.c];
+    return !!(pawn && pawn.owner === enemy && pawn.type === "P" && !pawn.promoted);
+  }
+
+  function silverAdvanceProfile(state, move, side) {
+    const empty = {
+      isSilverMove: false,
+      defended: false,
+      attacked: false,
+      pawnChase: false,
+      pressure: 0,
+      support: 0,
+      followUp: false,
+      fromKingDist: 9,
+      toKingDist: 9,
+      defenseDrop: 0,
+      classification: "none",
+      positiveReasons: [],
+      debugReasons: []
+    };
+    if (!move || move.drop || !move.from) return empty;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== "S") return empty;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const ownKing = findKing(state, side);
+    const fromKingDist = distance(move.from, ownKing);
+    const toKingDist = distance(move.to, ownKing);
+    const advanced = advancedRank(side, move.to);
+    const exchange = exchangeAfterMove(state, move, side);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const pawnChase = pawnCanChaseSquare(state, side, move.to);
+    let attacksEnemyPiece = false;
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, move.to.r, move.to.c, true)) {
+      const target = state.board[pseudo.to.r][pseudo.to.c];
+      if (target && target.owner === enemy && target.type !== "K") {
+        attacksEnemyPiece = true;
+        break;
+      }
+    }
+    window.ShogiBoard.undoMove(state, undo);
+
+    const followUp = pressure > 0 || attacksEnemyPiece || move.capture || exchange.see > 80 || advanced >= 4;
+    const breaksDefense = fromKingDist <= 2 && toKingDist >= 4;
+    const hanging = exchange.hanging || (attacked && !defended && support < 4);
+    const supportedAttack = (!!defended || support >= 4) && (pressure > 0 || attacksEnemyPiece || advanced <= 2);
+    const positiveReasons = [];
+    const debugReasons = [];
+    if (defended) positiveReasons.push("goodSilverAdvance");
+    if (supportedAttack) positiveReasons.push("silverSupportedAttack");
+    if (followUp) debugReasons.push("silverHasFollowUp");
+    if (breaksDefense) debugReasons.push("silverDefenseMovesAwayFromKing");
+    if (pawnChase) debugReasons.push("silverCanBeChasedByPawn");
+    if (hanging) debugReasons.push("silverIsHangingAfterAdvance");
+
+    let classification = "neutral";
+    if (hanging || (!defended && support < 4 && advanced >= 3) || (pawnChase && !supportedAttack) || (breaksDefense && !supportedAttack && !followUp)) {
+      classification = "bad";
+    } else if (supportedAttack || ((defended || support >= 4) && followUp) || (!breaksDefense && (defended || support >= 4))) {
+      classification = "good";
+    }
+
+    return {
+      isSilverMove: true,
+      defended: !!defended,
+      attacked: !!attacked,
+      pawnChase: !!pawnChase,
+      pressure,
+      support,
+      followUp,
+      fromKingDist,
+      toKingDist,
+      defenseDrop: Math.max(0, toKingDist - fromKingDist),
+      breaksDefense,
+      hanging,
+      supportedAttack,
+      classification,
+      positiveReasons,
+      debugReasons,
+      exchangeSee: exchange.see
+    };
+  }
+
   function unsupportedSilverAdvanceRisk(state, move, side) {
     if (!move || move.drop || !move.from) return 0;
     const piece = movingPiece(state, move);
     if (!piece || piece.type !== "S") return 0;
     const advanced = advancedRank(side, move.to);
     if (advanced < 3 || move.capture) return 0;
-    const undo = window.ShogiBoard.makeMove(state, move);
-    const attacked = window.ShogiRules.attacksSquare(state, window.ShogiBoard.opponent(side), move.to);
-    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
-    window.ShogiBoard.undoMove(state, undo);
-    if (!defended || attacked) return state.history.length < 38 ? 900 : 520;
+    const profile = silverAdvanceProfile(state, move, side);
+    if (profile.classification === "good") return 0;
+    if (profile.classification === "bad") return state.history.length < 38 ? 920 : 560;
+    if (!profile.defended && advanced >= 4) return 360;
     return 0;
   }
 
@@ -616,9 +719,9 @@
     if (!piece || piece.type !== "S") return 0;
     const king = findKing(state, side);
     if (!king) return 0;
-    const fromDist = distance(move.from, king);
-    const toDist = distance(move.to, king);
-    if (fromDist <= 2 && toDist >= 4 && !move.capture) return 760;
+    const profile = silverAdvanceProfile(state, move, side);
+    if (profile.classification === "good") return 0;
+    if (profile.breaksDefense && !move.capture) return profile.classification === "bad" ? 820 : 240;
     return 0;
   }
 
@@ -1174,6 +1277,10 @@
     risk += trappedBishopRisk(state, move, side) * (0.9 + level * 0.08);
     risk += unsupportedSilverAdvanceRisk(state, move, side) * (0.85 + level * 0.08);
     risk += silverLeavesCastleRisk(state, move, side) * (0.75 + level * 0.06);
+    const silverProfile = silverAdvanceProfile(state, move, side);
+    if (silverProfile.classification === "bad") risk += (520 + level * 70);
+    if (silverProfile.hanging) risk += 680 + level * 80;
+    if (silverProfile.pawnChase && silverProfile.classification === "bad") risk += 360 + level * 55;
     risk += majorOverextensionRisk(state, move, side, "R") * (0.85 + level * 0.08);
     risk += majorOverextensionRisk(state, move, side, "B") * (0.85 + level * 0.08);
     risk += weakKingShapeRisk(state, move, side) * (0.45 + level * 0.04);
@@ -1260,6 +1367,9 @@
       rawScore: rawDisplayScore,
       risk: Math.round(risk),
       badMoveReasons: badMoveReasons(state, item.move, state.turn, level, cfg, exchange),
+      positiveReasons: positiveReasons(state, item.move, state.turn),
+      debugReasons: debugReasons(state, item.move, state.turn),
+      silverDebug: silverDebug(state, item.move, state.turn),
       reason: ""
     });
     const annotated = Object.assign({}, item, { debug, selected: !!selected });
@@ -1284,6 +1394,12 @@
     add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0 && movingPiece(state, move) && movingPiece(state, move).type === "B", "earlyMeaninglessBishopExchange");
     add(unsupportedSilverAdvanceRisk(state, move, side) > 0, "unsupportedSilverAdvance");
     add(silverLeavesCastleRisk(state, move, side) > 0, "silverLeavesCastle");
+    const silverProfile = silverAdvanceProfile(state, move, side);
+    add(silverProfile.classification === "bad", "badSilverOverextension");
+    add(silverProfile.pawnChase && silverProfile.classification === "bad", "silverCanBeChasedByPawn");
+    add(silverProfile.hanging, "silverIsHangingAfterAdvance");
+    add(silverProfile.breaksDefense && silverProfile.classification === "bad", "silverBreaksKingDefense");
+    add(silverProfile.isSilverMove && !silverProfile.followUp && silverProfile.classification === "bad", "silverHasNoFollowUp");
     add(majorOverextensionRisk(state, move, side, "R") > 0, "rookOverextension");
     add(majorOverextensionRisk(state, move, side, "B") > 0, "bishopOverextension");
     add(weakKingShapeRisk(state, move, side) > 0, "weakKingShape");
@@ -1304,6 +1420,43 @@
     add(exchange && exchange.see < -80 && !exchange.check && !exchange.mateThreat, "badStaticExchange");
     add(allowsOpponentMateInOne(state, move), "allowsOpponentMateInOne");
     return reasons;
+  }
+
+  function positiveReasons(state, move, side) {
+    const reasons = [];
+    const profile = silverAdvanceProfile(state, move, side);
+    if (profile.isSilverMove) {
+      for (const reason of profile.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    }
+    return reasons;
+  }
+
+  function debugReasons(state, move, side) {
+    const reasons = [];
+    const profile = silverAdvanceProfile(state, move, side);
+    if (profile.isSilverMove) {
+      if (profile.classification === "neutral") reasons.push("neutralSilverAdvance");
+      for (const reason of profile.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    }
+    return reasons;
+  }
+
+  function silverDebug(state, move, side) {
+    const profile = silverAdvanceProfile(state, move, side);
+    if (!profile.isSilverMove) return null;
+    return {
+      from: move.from,
+      to: move.to,
+      defended: profile.defended,
+      attacked: profile.attacked,
+      pawnChase: profile.pawnChase,
+      defenseDrop: profile.defenseDrop,
+      support: profile.support,
+      pressure: profile.pressure,
+      followUp: profile.followUp,
+      classification: profile.classification,
+      exchangeSee: profile.exchangeSee
+    };
   }
 
   function annotateList(state, candidates, level, selectedMove, forceBest, phase, options = {}) {
@@ -1531,6 +1684,12 @@
       }
 
       if (p.type === "S" && advancedAfter > advancedBefore) score += 190;
+      if (p.type === "S") {
+        const silverProfile = silverAdvanceProfile(state, move, side);
+        if (silverProfile.classification === "good") score += 130;
+        if (silverProfile.supportedAttack) score += 80;
+        if (silverProfile.classification === "bad") score -= 520;
+      }
       score -= looseMinorPieceShapeRisk(state, move, side) * 4.5;
       if ((p.type === "G" || p.type === "S") && toKingDist < fromKingDist && ply < 30) score += p.type === "G" ? 170 : 140;
       if ((p.type === "G" || p.type === "S") && toKingDist > fromKingDist + 1 && kingMoved === 0 && ply < 30) score -= p.type === "G" ? 260 : 220;

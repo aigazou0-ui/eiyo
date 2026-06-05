@@ -129,8 +129,28 @@ function badReasonsForUsi(state, text) {
   return debug.badMoveReasons || [];
 }
 
+function debugForUsi(state, text) {
+  const wanted = moveFromUsi(text);
+  const key = moveKey(wanted);
+  const legal = context.ShogiRules.legalMoves(state, state.turn);
+  const found = legal.find(move => moveKey(move) === key);
+  if (!found) throw new Error(`illegal debug test move ${text}`);
+  return context.ShogiAI.debugMove(state, found, LEVEL, { mobile: true }) || {};
+}
+
 function hasReasonForMove(state, text, names) {
   const reasons = badReasonsForUsi(state, text);
+  return names.some(name => reasons.includes(name));
+}
+
+function lacksReasonForMove(state, text, names) {
+  const reasons = badReasonsForUsi(state, text);
+  return names.every(name => !reasons.includes(name));
+}
+
+function hasPositiveReasonForMove(state, text, names) {
+  const debug = debugForUsi(state, text);
+  const reasons = Array.isArray(debug.positiveReasons) ? debug.positiveReasons : [];
   return names.some(name => reasons.includes(name));
 }
 
@@ -261,6 +281,31 @@ function sacrificeCheckState() {
   state.board[4][4] = piece("R", "b");
   state.board[1][3] = piece("G", "w");
   state.board[0][3] = piece("G", "w");
+  return state;
+}
+
+function supportedSilverState() {
+  const state = emptyState("b", 24);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][4] = piece("S", "b");
+  state.board[5][3] = piece("G", "b");
+  state.board[5][5] = piece("B", "b");
+  return state;
+}
+
+function supportedSilverAttackState() {
+  const state = supportedSilverState();
+  state.board[4][3] = piece("P", "w");
+  return state;
+}
+
+function chasedSilverState() {
+  const state = emptyState("b", 24);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][4] = piece("S", "b");
+  state.board[4][4] = piece("P", "w");
   return state;
 }
 
@@ -444,6 +489,49 @@ function run() {
     const decision = choose(state);
     failures.push(assertTest("realgame-avoid-sacrifice-check", !hasBadReason(decision.debug, ["badSacrificeCheck", "noFollowUpCheck", "attackPieceLostAfterCheck"]), decision));
     failures.push(assertTest("realgame-label-sacrifice-check-followup", hasReasonForMove(state, "5e5b+", ["badSacrificeCheck", "noFollowUpCheck", "attackPieceLostAfterCheck"]), { moveUsi: "5e5b+", debug: { badMoveReasons: badReasonsForUsi(state, "5e5b+") } }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d"]);
+    failures.push(assertTest("silver-good-natural-advance-no-castle-penalty", lacksReasonForMove(state, "7i6h", ["silverLeavesCastle", "unsupportedSilverAdvance", "badSilverOverextension"]), { moveUsi: "7i6h", debug: debugForUsi(state, "7i6h") }));
+    failures.push(assertTest("silver-good-natural-advance-positive", hasPositiveReasonForMove(state, "7i6h", ["goodSilverAdvance", "silverSupportedAttack"]), { moveUsi: "7i6h", debug: debugForUsi(state, "7i6h") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b"]);
+    failures.push(assertTest("silver-good-yagura-advance-no-castle-penalty", lacksReasonForMove(state, "6h7g", ["silverLeavesCastle", "unsupportedSilverAdvance", "badSilverOverextension"]), { moveUsi: "6h7g", debug: debugForUsi(state, "6h7g") }));
+    failures.push(assertTest("silver-good-yagura-advance-positive", hasPositiveReasonForMove(state, "6h7g", ["silverSupportedAttack"]), { moveUsi: "6h7g", debug: debugForUsi(state, "6h7g") }));
+  }
+
+  {
+    const state = chasedSilverState();
+    failures.push(assertTest("silver-bad-chased-by-pawn", hasReasonForMove(state, "5g5f", ["badSilverOverextension", "silverCanBeChasedByPawn", "silverIsHangingAfterAdvance"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "5g5f", "8c8d", "7i6h", "8d8e", "6h5g", "7a6b"]);
+    failures.push(assertTest("silver-bad-breaks-king-defense", hasReasonForMove(state, "5g4f", ["badSilverOverextension", "silverBreaksKingDefense", "silverHasNoFollowUp"]), { moveUsi: "5g4f", debug: debugForUsi(state, "5g4f") }));
+  }
+
+  {
+    const state = supportedSilverState();
+    failures.push(assertTest("silver-supported-advance-not-bad", lacksReasonForMove(state, "5g5f", ["unsupportedSilverAdvance", "silverLeavesCastle", "badSilverOverextension", "silverIsHangingAfterAdvance"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = chasedSilverState();
+    failures.push(assertTest("silver-hanging-after-advance", hasReasonForMove(state, "5g5f", ["silverIsHangingAfterAdvance", "badStaticExchange"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = supportedSilverAttackState();
+    failures.push(assertTest("attack-probe-supported-is-allowed", lacksReasonForMove(state, "5g5f", ["unsupportedAttackProbe", "unsupportedSilverAdvance", "badSilverOverextension"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+    failures.push(assertTest("attack-probe-supported-positive", hasPositiveReasonForMove(state, "5g5f", ["silverSupportedAttack"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = unsupportedSilverState();
+    failures.push(assertTest("attack-probe-unsupported-is-bad", hasReasonForMove(state, "5e5d", ["unsupportedSilverAdvance", "badSilverOverextension"]), { moveUsi: "5e5d", debug: debugForUsi(state, "5e5d") }));
   }
 
   const failed = failures.filter(Boolean);
