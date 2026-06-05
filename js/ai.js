@@ -448,6 +448,25 @@
     const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
     const support = localAttackSupport(state, move.to, side, enemyKing);
     const afterDist = distance(move.to, enemyKing);
+    const ownKing = findKing(state, side);
+    const ownKingDist = distance(move.to, ownKing);
+    let bishopMobility = 0;
+    if (piece.type === "B") {
+      for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+        let r = move.to.r + dr;
+        let c = move.to.c + dc;
+        while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+          const target = state.board[r][c];
+          if (!target) bishopMobility += 1;
+          else {
+            if (target.owner !== side) bishopMobility += 1;
+            break;
+          }
+          r += dr;
+          c += dc;
+        }
+      }
+    }
     window.ShogiBoard.undoMove(state, undo);
     if (gives || pressure > 0) return 0;
     if (piece.type === "S") {
@@ -455,7 +474,8 @@
       if (state.history.length < 30 && advanced >= 3 && !defended) return 520;
     }
     if (piece.type === "B") {
-      if (support >= 4) return 0;
+      if (bishopMobility <= 4 && ownKingDist > 2 && afterDist >= beforeDist - 1) return 980;
+      if (support >= 4 && bishopMobility >= 6) return 0;
       if (advanced >= 3 && afterDist >= beforeDist && (!defended || attacked)) return 880;
       if (state.history.length < 34 && support <= 1 && !defended) return 620;
     }

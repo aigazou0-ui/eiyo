@@ -203,6 +203,27 @@ function inspectMove(state, move, beforeEval, afterEval) {
       if (piece.type === "B" && advanced >= 3 && pressure === 0 && support <= 2 && afterDist >= beforeDist) {
         addIssue(issues, 3, "unsupported-bishop-wander", state, move, { sideDelta, pressure, support });
       }
+      if (piece.type === "B") {
+        const ownKing = kingSquare(next, side);
+        let mobility = 0;
+        for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+          let r = move.to.r + dr;
+          let c = move.to.c + dc;
+          while (context.ShogiBoard.inside(r, c)) {
+            const target = next.board[r][c];
+            if (!target) mobility += 1;
+            else {
+              if (target.owner !== side) mobility += 1;
+              break;
+            }
+            r += dr;
+            c += dc;
+          }
+        }
+        if (mobility <= 4 && distance(move.to, ownKing) > 2 && pressure === 0 && afterDist >= beforeDist - 1) {
+          addIssue(issues, 3, "stranded-bishop", state, move, { sideDelta, pressure, support, mobility });
+        }
+      }
     }
     if ((piece.type === "R" || piece.type === "B") && ply >= 18 && ply < 52 && move.capture) {
       const next = context.ShogiBoard.applyMove(state, cloneMove(move));

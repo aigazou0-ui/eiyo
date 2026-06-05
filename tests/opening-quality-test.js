@@ -138,6 +138,28 @@ function looseMinorShapeIssue(state, move, side, piece, moveUsi) {
   const attacked = context.ShogiRules.attacksSquare(next, enemy, move.to);
   const pressure = attacksKingZoneFrom(next, move.to, side, enemyKing);
   const afterDist = distance(move.to, enemyKing);
+  const ownKing = kingSquare(next, side);
+  const ownKingDist = distance(move.to, ownKing);
+  let bishopMobility = 0;
+  if (piece.type === "B") {
+    for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      let r = move.to.r + dr;
+      let c = move.to.c + dc;
+      while (context.ShogiBoard.inside(r, c)) {
+        const target = next.board[r][c];
+        if (!target) bishopMobility += 1;
+        else {
+          if (target.owner !== side) bishopMobility += 1;
+          break;
+        }
+        r += dr;
+        c += dc;
+      }
+    }
+  }
+  if (piece.type === "B" && bishopMobility <= 4 && ownKingDist > 2 && afterDist >= beforeDist - 1) {
+    return { severity: 3, type: "stranded-bishop", text: `${sideName(side)} ${moveUsi}: bishop with poor diagonal scope` };
+  }
   if (pressure > 0 || defended && !attacked) return null;
   if (piece.type === "S" && advanced >= 4 && afterDist >= beforeDist - 1) {
     return { severity: 3, type: "unsupported-silver-sortie", text: `${sideName(side)} ${moveUsi}: 働きの薄い銀進出` };
