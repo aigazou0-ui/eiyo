@@ -251,6 +251,11 @@
     const piece = state.board[move.from.r][move.from.c];
     if (!piece) return false;
     const ply = state.history.length;
+    const target = state.board[move.to.r][move.to.c];
+    if (move.capture && ply < 30 &&
+        (piece.type === "R" || piece.type === "B") &&
+        target && target.owner !== piece.owner &&
+        (target.type === "R" || target.type === "B")) return true;
     const advanced = advancedRank(piece.owner, move.to);
     if ((piece.type === "R" || piece.type === "B") && advanced >= 5 && ply < 42) return true;
     if (piece.type !== "P" && piece.type !== "K" && advanced >= 6 && ply < 30 && !move.capture) return true;

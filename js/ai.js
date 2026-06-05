@@ -681,6 +681,26 @@
     return Math.max(0, Math.round(risk));
   }
 
+  function aimlessEarlyMajorCaptureRisk(state, move, side, exchange) {
+    if (!move || move.drop || !move.from || !move.capture || state.history.length >= 34) return 0;
+    const piece = movingPiece(state, move);
+    const target = state.board[move.to.r][move.to.c];
+    if (!piece || !target || target.owner === side) return 0;
+    if ((piece.type !== "R" && piece.type !== "B") || (target.type !== "R" && target.type !== "B")) return 0;
+    if (exchange.mateThreat || exchange.check || exchange.see >= 260) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const nearKing = distance(move.to, enemyKing) <= 3;
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (nearKing || pressure >= 3 || support >= 5 || defended > attacked) return 0;
+    return 1400 + Math.max(0, 34 - state.history.length) * 35;
+  }
+
   function quietMajorPromotionPenalty(state, move, side) {
     if (!move || move.drop || !move.promote || move.capture || state.history.length >= 54) return 0;
     const piece = movingPiece(state, move);
@@ -966,6 +986,7 @@
       if (piece && (piece.type === "R" || piece.type === "B")) risk += 500 + level * 55;
     }
     risk += majorSacrificeRisk(state, move, side, exchange) * (0.9 + level * 0.08);
+    risk += aimlessEarlyMajorCaptureRisk(state, move, side, exchange) * (0.9 + level * 0.06);
     risk += centralBreakthroughRisk(state, move, side) * (0.75 + level * 0.07);
     if (exchange.see < -80 && !exchange.check && !exchange.mateThreat) {
       risk += Math.abs(exchange.see) * (0.9 + level * 0.12);
@@ -1304,6 +1325,7 @@
       score += Math.max(-260000, Math.min(260000, exchange.see * 180));
       if (exchange.see < -160) score -= 260000;
       score -= majorSacrificeRisk(state, move, state.turn, exchange) * 120;
+      score -= aimlessEarlyMajorCaptureRisk(state, move, state.turn, exchange) * 140;
     }
     if (move.promote) score += Math.max(12000, 110000 - quietMajorPromotionPenalty(state, move, state.turn) * 120);
     if (givesCheck(state, move, state.turn)) {
@@ -1583,6 +1605,7 @@
     if (move.capture) score += 180 + captureScore / 8;
     score += exchange.netMaterial * (level >= 8 ? 0.75 : 0.45);
     score -= majorSacrificeRisk(state, move, side, exchange) * (level >= 8 ? 1.1 : 0.75);
+    score -= aimlessEarlyMajorCaptureRisk(state, move, side, exchange) * (level >= 8 ? 1.35 : 0.9);
     if (exchange.see < 0 && !exchange.check && !exchange.mateThreat) score += exchange.see * (level >= 8 ? 1.25 : 0.75);
     if (exchange.see > 0 && move.capture) score += exchange.see * (level >= 8 ? 0.35 : 0.2);
     if (exchange.hanging && !exchange.check && !exchange.mateThreat) score -= (exchange.immediateLoss - exchange.captureGain) * (level >= 8 ? 1.15 : 0.75);

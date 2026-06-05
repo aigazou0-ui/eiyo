@@ -391,6 +391,22 @@ const edgeBishopDetected = boardShapeIssues(edgeBishopRegression, 5)
 const edgeBishopDetectorIssue = edgeBishopDetected
   ? []
   : [{ game: "regression", type: "edge-bishop-detector-missed", move: "8h9g after 9g9f" }];
+let aimlessBishopTradeRegression = context.ShogiBoard.newState();
+[
+  "7g7f", "3c3d", "2g2f", "8c8d", "9g9f"
+].forEach(text => {
+  aimlessBishopTradeRegression = applyUsi(aimlessBishopTradeRegression, text);
+});
+const aimlessBishopTradeResult = context.ShogiAI.chooseMoveWithRandomness(aimlessBishopTradeRegression, 10, {
+  mobile: true,
+  personality: "stable",
+  randomness: "none",
+  openingStyle: "bishop-exchange"
+});
+const aimlessBishopTradeMove = usi(aimlessBishopTradeResult.bestMove);
+const aimlessBishopTradeIssue = aimlessBishopTradeMove === "2b8h+"
+  ? [{ game: "regression", type: "aimless-early-bishop-trade", move: aimlessBishopTradeMove }]
+  : [];
 const severe = games.flatMap(game => game.issues.map(issue => Object.assign({ game: game.game }, issue)))
   .filter(issue => issue.severity >= 3);
 const notCastled = games.flatMap(game => {
@@ -405,7 +421,7 @@ const slowGames = games
 
 console.log(JSON.stringify({
   ok: severe.length === 0 && notCastled.length === 0 && slowGames.length === 0,
-  severe: severe.concat(bishopDropIssue, edgeBishopDetectorIssue),
+  severe: severe.concat(bishopDropIssue, edgeBishopDetectorIssue, aimlessBishopTradeIssue),
   notCastled,
   slowGames,
   summaries: games.map(game => ({
@@ -419,4 +435,4 @@ console.log(JSON.stringify({
   }))
 }, null, 2));
 
-if (severe.length || bishopDropIssue.length || edgeBishopDetectorIssue.length || notCastled.length || slowGames.length) process.exitCode = 1;
+if (severe.length || bishopDropIssue.length || edgeBishopDetectorIssue.length || aimlessBishopTradeIssue.length || notCastled.length || slowGames.length) process.exitCode = 1;
