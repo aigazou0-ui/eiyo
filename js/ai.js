@@ -433,6 +433,35 @@
     return 0;
   }
 
+  function looseMinorPieceShapeRisk(state, move, side) {
+    if (!move || move.drop || !move.from || move.capture || move.promote || state.history.length > 64) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || !["B", "S"].includes(piece.type)) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    const enemyKing = findKing(state, enemy);
+    const beforeDist = distance(move.from, enemyKing);
+    const advanced = advancedRank(side, move.to);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
+    const gives = window.ShogiRules.inCheck(state, enemy);
+    const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
+    const support = localAttackSupport(state, move.to, side, enemyKing);
+    const afterDist = distance(move.to, enemyKing);
+    window.ShogiBoard.undoMove(state, undo);
+    if (gives || pressure > 0) return 0;
+    if (piece.type === "S") {
+      if (advanced >= 4 && (!defended || attacked) && afterDist >= beforeDist - 1) return 760;
+      if (state.history.length < 30 && advanced >= 3 && !defended) return 520;
+    }
+    if (piece.type === "B") {
+      if (support >= 4) return 0;
+      if (advanced >= 3 && afterDist >= beforeDist && (!defended || attacked)) return 880;
+      if (state.history.length < 34 && support <= 1 && !defended) return 620;
+    }
+    return 0;
+  }
+
   function fastShapeRisk(state, move, side) {
     let risk = 0;
     if (isEarlyBishopHeadPawnPush(state, move, side)) risk += 9000;
@@ -446,6 +475,7 @@
         if (piece.type === "P" && !move.capture && advanced >= 4) risk += 360;
         if ((piece.type === "R" || piece.type === "B") && !move.capture && advanced >= 4 && state.history.length < 34) risk += 1300;
         if (move.promote && (piece.type === "R" || piece.type === "B") && !move.capture && state.history.length < 30) risk += 900;
+        risk += looseMinorPieceShapeRisk(state, move, side);
       }
     }
     return risk;
@@ -958,6 +988,15 @@
     ));
   }
 
+  function safeFastSelectionItems(state, items) {
+    const annotated = (items || []).map(item => Object.assign({}, item, {
+      shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn)
+    }));
+    const safe = annotated.filter(item => item.shapeRisk < 700);
+    return (safe.length ? safe : annotated)
+      .sort((a, b) => (b.score - b.shapeRisk * 80) - (a.score - a.shapeRisk * 80));
+  }
+
   function chooseMoveWithRandomness(state, level, options = {}) {
     const lv = normalizedLevel(level);
     const cfg = config(lv, options);
@@ -986,7 +1025,8 @@
     }
 
     if (cfg.mobile && state.history.length < 34 && base.depth <= 1 && base.candidates.length) {
-      const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
+      const fastItems = safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)));
+      const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
         debug: item.debug || {
@@ -1004,7 +1044,8 @@
     }
 
     if (cfg.mobile && (state.history.length > 30 || base.nodes > 70) && base.depth <= 1) {
-      const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
+      const fastItems = safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)));
+      const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
         debug: item.debug || {
@@ -1125,6 +1166,7 @@
       }
 
       if (p.type === "S" && advancedAfter > advancedBefore) score += 190;
+      score -= looseMinorPieceShapeRisk(state, move, side) * 4.5;
       if (p.type === "G" && advancedAfter <= 2 && (move.to.c <= 3 || move.to.c >= 5)) score += 90;
       if (p.type === "G" && ply < 12 && advancedAfter > advancedBefore && move.from.c === move.to.c && move.to.c >= 3 && move.to.c <= 5) score -= 1600;
       if (p.type === "K") {
@@ -1270,6 +1312,8 @@
       const nonDrops = candidateMoves.filter(move => !move.drop);
       if (nonDrops.length) candidateMoves = nonDrops;
     }
+    const noLooseMinorShapes = candidateMoves.filter(move => looseMinorPieceShapeRisk(state, move, side) < 700);
+    if (noLooseMinorShapes.length) candidateMoves = noLooseMinorShapes;
     const ordered = (candidateMoves.length ? candidateMoves : moves)
       .map(move => ({ move, score: cheapOrderingScore(state, move, null), depth: 1, nodes: moves.length, pv: [move] }))
       .sort((a, b) => b.score - a.score)

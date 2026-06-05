@@ -125,6 +125,29 @@ function hasCastleProgress(state, side) {
   return guards >= 2;
 }
 
+function looseMinorShapeIssue(state, move, side, piece, moveUsi) {
+  if (!piece || !["B", "S"].includes(piece.type) || move.capture || move.promote) return null;
+  const ply = state.history.length;
+  if (ply > 64) return null;
+  const enemy = context.ShogiBoard.opponent(side);
+  const enemyKing = kingSquare(state, enemy);
+  const beforeDist = distance(move.from, enemyKing);
+  const advanced = advancedRank(side, move.to);
+  const next = context.ShogiBoard.applyMove(state, move);
+  const defended = context.ShogiRules.attacksSquare(next, side, move.to);
+  const attacked = context.ShogiRules.attacksSquare(next, enemy, move.to);
+  const pressure = attacksKingZoneFrom(next, move.to, side, enemyKing);
+  const afterDist = distance(move.to, enemyKing);
+  if (pressure > 0 || defended && !attacked) return null;
+  if (piece.type === "S" && advanced >= 4 && afterDist >= beforeDist - 1) {
+    return { severity: 3, type: "unsupported-silver-sortie", text: `${sideName(side)} ${moveUsi}: 働きの薄い銀進出` };
+  }
+  if (piece.type === "B" && advanced >= 3 && afterDist >= beforeDist) {
+    return { severity: 3, type: "unsupported-bishop-wander", text: `${sideName(side)} ${moveUsi}: 働きの薄い角移動` };
+  }
+  return null;
+}
+
 function issueForMove(state, move) {
   const side = state.turn;
   const ply = state.history.length;
@@ -164,6 +187,8 @@ function issueForMove(state, move) {
         return { severity: 3, type: "passive-major", text: `${sideName(side)} ${moveUsi}: passive major-piece move` };
       }
     }
+    const looseMinor = looseMinorShapeIssue(state, move, side, p, moveUsi);
+    if (looseMinor) return looseMinor;
     if (ply < 24 && p.type === "P" && !move.capture && after >= 3) {
       const enemy = context.ShogiBoard.opponent(side);
       const next = context.ShogiBoard.applyMove(state, move);

@@ -190,6 +190,20 @@ function inspectMove(state, move, beforeEval, afterEval) {
     if ((piece.type === "R" || piece.type === "B") && ply >= 24 && ply < 80 && isRecentReverse(state, move, 18)) {
       addIssue(issues, 3, "major-shuffle", state, move, { sideDelta });
     }
+    if ((piece.type === "S" || piece.type === "B") && ply < 64 && !move.capture && !move.promote) {
+      const next = context.ShogiBoard.applyMove(state, cloneMove(move));
+      const pressure = attacksKingZoneFrom(next, move.to, side, enemyKing);
+      const support = localSupport(next, move.to, side);
+      const beforeDist = distance(move.from, enemyKing);
+      const afterDist = distance(move.to, enemyKing);
+      const advanced = advancedRank(side, move.to);
+      if (piece.type === "S" && advanced >= 4 && pressure === 0 && support <= 2 && afterDist >= beforeDist - 1) {
+        addIssue(issues, 3, "unsupported-silver-sortie", state, move, { sideDelta, pressure, support });
+      }
+      if (piece.type === "B" && advanced >= 3 && pressure === 0 && support <= 2 && afterDist >= beforeDist) {
+        addIssue(issues, 3, "unsupported-bishop-wander", state, move, { sideDelta, pressure, support });
+      }
+    }
     if ((piece.type === "R" || piece.type === "B") && ply >= 18 && ply < 52 && move.capture) {
       const next = context.ShogiBoard.applyMove(state, cloneMove(move));
       const pressure = attacksKingZoneFrom(next, move.to, side, enemyKing);
