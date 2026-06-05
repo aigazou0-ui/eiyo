@@ -313,7 +313,7 @@
             cc += dc;
           }
         }
-        if (pressure <= 0 && support < 4 && ownKingDist > 2 && mobility <= 9) return true;
+        if (ownKingDist > 2) return true;
       }
     }
     return false;

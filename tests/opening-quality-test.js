@@ -223,7 +223,7 @@ function boardShapeIssues(state, ply) {
         const mobility = bishopMobility(state, square, side);
         const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
         const support = localSupport(state, square, side);
-        if ((c === 0 || c === 8) && mobility <= 9 && pressure === 0 && support < 4 && distance(square, ownKing) > 2) {
+        if ((c === 0 || c === 8) && distance(square, ownKing) > 2) {
           issues.push({
             ply,
             severity: 4,
@@ -380,6 +380,17 @@ const bishopDropMove = usi(bishopDropResult.bestMove);
 const bishopDropIssue = /^[BR]\*/.test(bishopDropMove)
   ? [{ game: "regression", type: "early-major-drop-choice", move: bishopDropMove }]
   : [];
+let edgeBishopRegression = context.ShogiBoard.newState();
+[
+  "9g9f", "3c3d", "7g7f", "8c8d", "8h9g"
+].forEach(text => {
+  edgeBishopRegression = applyUsi(edgeBishopRegression, text);
+});
+const edgeBishopDetected = boardShapeIssues(edgeBishopRegression, 5)
+  .some(issue => issue.type === "edge-stranded-bishop-board");
+const edgeBishopDetectorIssue = edgeBishopDetected
+  ? []
+  : [{ game: "regression", type: "edge-bishop-detector-missed", move: "8h9g after 9g9f" }];
 const severe = games.flatMap(game => game.issues.map(issue => Object.assign({ game: game.game }, issue)))
   .filter(issue => issue.severity >= 3);
 const notCastled = games.flatMap(game => {
@@ -394,7 +405,7 @@ const slowGames = games
 
 console.log(JSON.stringify({
   ok: severe.length === 0 && notCastled.length === 0 && slowGames.length === 0,
-  severe: severe.concat(bishopDropIssue),
+  severe: severe.concat(bishopDropIssue, edgeBishopDetectorIssue),
   notCastled,
   slowGames,
   summaries: games.map(game => ({
@@ -408,4 +419,4 @@ console.log(JSON.stringify({
   }))
 }, null, 2));
 
-if (severe.length || bishopDropIssue.length || notCastled.length || slowGames.length) process.exitCode = 1;
+if (severe.length || bishopDropIssue.length || edgeBishopDetectorIssue.length || notCastled.length || slowGames.length) process.exitCode = 1;

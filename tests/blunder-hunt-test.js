@@ -289,7 +289,7 @@ function inspectBoardShape(state, ply) {
         const mobility = bishopMobility(state, square, side);
         const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
         const support = localSupport(state, square, side);
-        if ((c === 0 || c === 8) && mobility <= 9 && pressure === 0 && support < 4 && distance(square, ownKing) > 2) {
+        if ((c === 0 || c === 8) && distance(square, ownKing) > 2) {
           issues.push({
             severity: 4,
             type: "edge-stranded-bishop-board",
