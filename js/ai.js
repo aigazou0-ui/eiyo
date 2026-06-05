@@ -470,6 +470,10 @@
     const fromWing = Math.abs(move.from.c - 4);
     const toWing = Math.abs(move.to.c - 4);
     const advanced = advancedRank(side, move.to);
+    const beforeGuards = kingGuardCount(state, side, move.from);
+    const beforeEscapeRoutes = kingEscapeRoutes(state, side, move.from);
+    const beforeLinePressure = linePiecePressureOnSquare(state, move.from, enemy);
+    const beforeAttackNearKing = enemyAttackNearKing(state, side, move.from);
     const undo = window.ShogiBoard.makeMove(state, move);
     const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
     let nearbyGuards = 0;
@@ -483,6 +487,8 @@
     for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, move.to.r, move.to.c, true)) {
       if (!window.ShogiRules.attacksSquare(state, enemy, pseudo.to)) escapeRoutes += 1;
     }
+    const afterLinePressure = linePiecePressureOnSquare(state, move.to, enemy);
+    const afterAttackNearKing = enemyAttackNearKing(state, side, move.to);
     window.ShogiBoard.undoMove(state, undo);
 
     const positiveReasons = [];
@@ -490,20 +496,127 @@
     if (fromWing === 0 && toWing > 0 && advanced < 2) positiveReasons.push("leavesStaticKing");
     if (toWing > fromWing && advanced < 2) positiveReasons.push("kingMovesTowardCastle");
     if (nearbyGuards >= 2) positiveReasons.push("kingMovesTowardGoldSilver");
+    if (beforeLinePressure > 0 && afterLinePressure < beforeLinePressure) positiveReasons.push("kingEscapesLinePressure");
+    if (escapeRoutes > beforeEscapeRoutes) positiveReasons.push("kingImprovesEscapeRoutes");
+    if (nearbyGuards > beforeGuards || afterAttackNearKing < beforeAttackNearKing) positiveReasons.push("kingImprovesDefense");
     if (attacked) debugReasons.push("kingMovesTowardDanger");
     if (advanced >= 2) debugReasons.push("badKingMove");
     if (nearbyGuards <= 0) debugReasons.push("kingLeavesDefense");
+    if (afterLinePressure > beforeLinePressure) debugReasons.push("kingExposedToLinePiece");
     if (escapeRoutes <= 1) debugReasons.push("kingReducesEscapeRoutes");
+    const noPurpose = !positiveReasons.length && !attacked && advanced < 2 && nearbyGuards <= beforeGuards && escapeRoutes <= beforeEscapeRoutes;
+    if (noPurpose) debugReasons.push("kingMoveNoPurpose");
 
     let classification = "neutral";
-    if (attacked || advanced >= 2 || nearbyGuards <= 0 || escapeRoutes <= 1) classification = "bad";
+    if (attacked || advanced >= 2 || nearbyGuards <= 0 || escapeRoutes <= 1 || afterLinePressure > beforeLinePressure || noPurpose) classification = "bad";
     else if (positiveReasons.length) {
       classification = "good";
       positiveReasons.unshift("goodCastleKingMove");
     } else {
       debugReasons.push("neutralKingMove");
     }
-    return { isKingMove: true, classification, attacked: !!attacked, nearbyGuards, escapeRoutes, advanced, fromWing, toWing, positiveReasons, debugReasons };
+    return {
+      isKingMove: true,
+      classification,
+      attacked: !!attacked,
+      nearbyGuards,
+      beforeGuards,
+      escapeRoutes,
+      beforeEscapeRoutes,
+      advanced,
+      fromWing,
+      toWing,
+      linePiecePressureBefore: beforeLinePressure,
+      linePiecePressureAfter: afterLinePressure,
+      enemyAttackNearKingBefore: beforeAttackNearKing,
+      enemyAttackNearKingAfter: afterAttackNearKing,
+      castleDirectionScore: toWing - fromWing - Math.max(0, advanced - 1),
+      kingSafetyDelta: (nearbyGuards - beforeGuards) * 2 + (escapeRoutes - beforeEscapeRoutes) - (afterAttackNearKing - beforeAttackNearKing) - (afterLinePressure - beforeLinePressure) * 2,
+      positiveReasons,
+      debugReasons
+    };
+  }
+
+  function kingGuardCount(state, side, square) {
+    if (!square) return 0;
+    let guards = 0;
+    for (let r = Math.max(0, square.r - 2); r <= Math.min(8, square.r + 2); r += 1) {
+      for (let c = Math.max(0, square.c - 2); c <= Math.min(8, square.c + 2); c += 1) {
+        const p = state.board[r][c];
+        if (p && p.owner === side && (p.type === "G" || p.type === "S")) guards += 1;
+      }
+    }
+    return guards;
+  }
+
+  function kingEscapeRoutes(state, side, square) {
+    if (!square) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    let routes = 0;
+    for (const pseudo of window.ShogiRules.pseudoPieceMoves(state, square.r, square.c, true)) {
+      const target = state.board[pseudo.to.r][pseudo.to.c];
+      if (target && target.owner === side) continue;
+      if (!window.ShogiRules.attacksSquare(state, enemy, pseudo.to)) routes += 1;
+    }
+    return routes;
+  }
+
+  function linePiecePressureOnSquare(state, square, enemy) {
+    if (!square) return 0;
+    let pressure = 0;
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      let r = square.r + dr;
+      let c = square.c + dc;
+      while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+        const p = state.board[r][c];
+        if (p) {
+          if (p.owner === enemy && (p.type === "R" || p.type === "L" || p.promoted)) pressure += p.type === "R" ? 3 : 1;
+          break;
+        }
+        r += dr;
+        c += dc;
+      }
+    }
+    for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      let r = square.r + dr;
+      let c = square.c + dc;
+      while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+        const p = state.board[r][c];
+        if (p) {
+          if (p.owner === enemy && (p.type === "B" || p.promoted)) pressure += p.type === "B" ? 3 : 1;
+          break;
+        }
+        r += dr;
+        c += dc;
+      }
+    }
+    return pressure;
+  }
+
+  function enemyAttackNearKing(state, side, square) {
+    if (!square) return 0;
+    const enemy = window.ShogiBoard.opponent(side);
+    let attacks = 0;
+    for (let r = Math.max(0, square.r - 1); r <= Math.min(8, square.r + 1); r += 1) {
+      for (let c = Math.max(0, square.c - 1); c <= Math.min(8, square.c + 1); c += 1) {
+        if (window.ShogiRules.attacksSquare(state, enemy, { r, c })) attacks += 1;
+      }
+    }
+    return attacks;
+  }
+
+  function distanceToNearestGoldSilver(state, side, square) {
+    if (!square) return 9;
+    let best = 9;
+    for (let r = 0; r < 9; r += 1) {
+      for (let c = 0; c < 9; c += 1) {
+        const p = state.board[r][c];
+        if (p && p.owner === side && (p.type === "G" || p.type === "S")) {
+          best = Math.min(best, distance(square, { r, c }));
+        }
+      }
+    }
+    return best;
   }
 
   function earlyMajorPieceSortiePenalty(state, move, side) {
@@ -612,6 +725,33 @@
     return count;
   }
 
+  function recentEdgePawnCount(state) {
+    if (!state.history) return 0;
+    let count = 0;
+    for (let i = state.history.length - 1; i >= Math.max(0, state.history.length - 10); i -= 1) {
+      const prev = state.history[i];
+      if (!prev || prev.drop || prev.capture || prev.promote || !prev.to) continue;
+      const piece = prev.piece || "P";
+      if (piece === "P" && (prev.to.c === 0 || prev.to.c === 8)) count += 1;
+    }
+    return count;
+  }
+
+  function naturalDevelopmentAvailable(state, side) {
+    if (state.history.length >= 34) return false;
+    const king = findKing(state, side);
+    const home = side === "b" ? 8 : 0;
+    if (king && Math.abs(king.c - 4) + Math.abs(king.r - home) === 0) return true;
+    for (const move of window.ShogiRules.legalMoves(state, side).slice(0, 80)) {
+      if (move.drop || !move.from || move.capture) continue;
+      const p = state.board[move.from.r][move.from.c];
+      if (!p || p.owner !== side) continue;
+      if ((p.type === "G" || p.type === "S") && king && distance(move.to, king) < distance(move.from, king)) return true;
+      if (p.type === "K" && advancedRank(side, move.to) < 2 && Math.abs(move.to.c - 4) > Math.abs(move.from.c - 4)) return true;
+    }
+    return false;
+  }
+
   function probeMoveProfile(state, move, side) {
     const empty = { isProbeMove: false, isEdgePawn: false, classification: "none", positiveReasons: [], debugReasons: [] };
     if (!move || move.drop || !move.from || move.capture || move.promote) return empty;
@@ -651,9 +791,14 @@
       return !!((p1 && p1.owner === enemy && p1.type === "P") || (p2 && p2.owner === enemy && p2.type === "P" && state.history.length >= 12));
     })();
     const repeated = repeatedProbeCount(state, move);
+    const edgeCount = recentEdgePawnCount(state);
     const noFollowUp = pressure <= 0 && support < 3 && !attacksEnemyPiece && exchange.see <= 0 && !defended;
     const weakensKing = !beforeOwnKingAttacked && afterOwnKingAttacked && ownKing && distance(move.from, ownKing) <= 3;
-    const ignoresCastle = state.history.length < 30 && !nearOwnKing(state, side, move.to) && ["P", "S", "N", "L", "R", "B"].includes(piece.type);
+    const naturalAvailable = state.history.length < 30 && noFollowUp ? naturalDevelopmentAvailable(state, side) : false;
+    const castleDevelopmentDelayed = naturalAvailable && !nearOwnKing(state, side, move.to) && ["P", "S", "N", "L", "R", "B"].includes(piece.type);
+    const similarProbe = repeated > 0 || (isEdgePawn && edgeCount > 0);
+    const usefulPurpose = edgeEscapeRoute || opponentEdgePawn || pressure > 0 || support >= 3 || attacksEnemyPiece || exchange.see >= 40;
+    const progressAfterProbe = usefulPurpose || defended || move.capture;
 
     const positiveReasons = [];
     const debugReasons = [];
@@ -662,15 +807,26 @@
     if (opponentEdgePawn) positiveReasons.push("respondsToOpponentEdge");
     if (support >= 3 || defended) positiveReasons.push("probeKeepsFlexibility");
     if (isEdgePawn && (edgeEscapeRoute || opponentEdgePawn || support >= 2)) positiveReasons.push("usefulEdgePawn");
+    if (classificationPurpose(edgeEscapeRoute, opponentEdgePawn, pressure, support, attacksEnemyPiece)) positiveReasons.push("probeHasStrategicPurpose");
+    if (opponentEdgePawn || attacked) positiveReasons.push("respondsToOpponentPlan");
+    if (edgeEscapeRoute) positiveReasons.push("createsEscapeRoute");
+    if (isEdgePawn && pressure > 0) positiveReasons.push("preparesEdgeAttack");
+    if (!castleDevelopmentDelayed && progressAfterProbe && state.history.length >= 18) positiveReasons.push("usefulWaitingMove");
     if (weakensKing && isEdgePawn) debugReasons.push("edgePawnWeakensKing");
     if (isEdgePawn && noFollowUp && !edgeEscapeRoute && !opponentEdgePawn) debugReasons.push("pointlessEdgePawn");
-    if (repeated >= 2) debugReasons.push("repeatedProbeMove");
+    if (similarProbe && !usefulPurpose) debugReasons.push("repeatedProbeMove");
+    if (similarProbe && noFollowUp && castleDevelopmentDelayed) debugReasons.push("probeSpam");
+    if (castleDevelopmentDelayed && noFollowUp) debugReasons.push("probeDelaysCastle");
+    if (!progressAfterProbe && noFollowUp) debugReasons.push("probeNoProgress");
+    if (isEdgePawn && edgeCount >= 1 && !usefulPurpose) debugReasons.push("repeatedEdgePawn");
+    if (piece.type === "P" && similarProbe && noFollowUp && !usefulPurpose) debugReasons.push("repeatedLoosePawnPush");
     if (noFollowUp) debugReasons.push("probeHasNoFollowUp");
     if (!positiveReasons.length && !debugReasons.length) debugReasons.push("neutralProbeMove");
 
     let classification = "neutral";
-    if ((isEdgePawn && (weakensKing || (noFollowUp && repeated >= 1) || (attacked && !defended && exchange.see < -40))) ||
+    if ((isEdgePawn && (weakensKing || (noFollowUp && repeated >= 1 && !usefulPurpose) || (attacked && !defended && exchange.see < -40))) ||
         (!isEdgePawn && noFollowUp && attacked && !defended && advanced >= 3) ||
+        (similarProbe && noFollowUp && castleDevelopmentDelayed && !usefulPurpose) ||
         (repeated >= 3 && noFollowUp)) {
       classification = "bad";
     } else if (positiveReasons.length && !weakensKing && exchange.see >= -120) {
@@ -686,8 +842,15 @@
       edgeEscapeRoute,
       respondsToOpponentEdge: opponentEdgePawn,
       hasFollowUp: !noFollowUp,
-      ignoresCastleDevelopment: ignoresCastle && noFollowUp,
-      repeatedProbeMove: repeated >= 2,
+      ignoresCastleDevelopment: castleDevelopmentDelayed && noFollowUp,
+      recentProbeCount: repeated,
+      recentEdgePawnCount: edgeCount,
+      similarProbeInRecentMoves: similarProbe,
+      castleDevelopmentDelayed,
+      naturalDevelopmentAvailable: naturalAvailable,
+      progressAfterProbe,
+      repeatedClassification: classification,
+      repeatedProbeMove: similarProbe && !usefulPurpose,
       weakensKing,
       pressure,
       support,
@@ -695,6 +858,10 @@
       positiveReasons,
       debugReasons
     };
+  }
+
+  function classificationPurpose(edgeEscapeRoute, opponentEdgePawn, pressure, support, attacksEnemyPiece) {
+    return !!(edgeEscapeRoute || opponentEdgePawn || pressure > 0 || support >= 3 || attacksEnemyPiece);
   }
 
   function unsupportedAttackProbeRisk(state, move, side) {
@@ -777,7 +944,7 @@
       }
     }
     window.ShogiBoard.undoMove(state, undo);
-    if (gives || pressure > 0) return 0;
+    if (gives || pressure > 0 || support >= 3) return 0;
     if (piece.type === "S") {
       if (advanced >= 4 && (!defended || attacked) && afterDist >= beforeDist - 1) return 760;
       if (state.history.length < 30 && advanced >= 3 && !defended) return 520;
@@ -1272,9 +1439,13 @@
     const opensCenterAgainstOwnKing = !beforeKingAttack && afterKingAttack && ownKing && distance(move.from, ownKing) <= 4;
     const hasFollowUp = gives || pressure > 0 || support >= 3 || sameFilePower >= 4 || move.capture || move.promote || exchange.see >= 40;
     if (support >= 3 || sameFilePower >= 4 || defended) positiveReasons.push("supportedCentralPush");
+    if (defended || support >= 3) positiveReasons.push("centralPieceSupported");
     if (pressure > 0 || gives) positiveReasons.push("centralPressureCreated");
+    if (pressure > 0 || gives) positiveReasons.push("centralPieceCreatesPressure");
     if (exchange.see >= -40) positiveReasons.push("centralExchangeOk");
+    if (exchange.see >= -40) positiveReasons.push("centralPieceExchangeOk");
     if (hasFollowUp) positiveReasons.push("centralAttackHasFollowUp");
+    if (hasFollowUp) positiveReasons.push("centralPieceHasFollowUp");
     if (piece.type === "P" && support >= 2 && exchange.see >= -40) positiveReasons.push("naturalCentralDevelopment");
     if (support <= 1 && sameFilePower <= 2) debugReasons.push("unsupportedCentralPush");
     if (hangs) debugReasons.push("centralPieceHangs");
@@ -1678,6 +1849,8 @@
     const probeProfile = probeMoveProfile(state, move, side);
     if (probeProfile.classification === "bad") risk += 220 + level * 35;
     if (probeProfile.repeatedProbeMove) risk += 180 + level * 28;
+    if (probeProfile.debugReasons && probeProfile.debugReasons.includes("probeSpam")) risk += 260 + level * 45;
+    if (probeProfile.debugReasons && probeProfile.debugReasons.includes("probeDelaysCastle")) risk += 180 + level * 30;
     risk += badBishopMoveRisk(state, move, side) * (0.85 + level * 0.08);
     risk += trappedBishopRisk(state, move, side) * (0.9 + level * 0.08);
     risk += unsupportedSilverAdvanceRisk(state, move, side) * (0.85 + level * 0.08);
@@ -1815,6 +1988,11 @@
     add(probeProfile.isEdgePawn && probeProfile.weakensKing, "edgePawnWeakensKing");
     add(probeProfile.debugReasons && probeProfile.debugReasons.includes("pointlessEdgePawn"), "pointlessEdgePawn");
     add(probeProfile.repeatedProbeMove, "repeatedProbeMove");
+    add(probeProfile.debugReasons && probeProfile.debugReasons.includes("probeSpam"), "probeSpam");
+    add(probeProfile.debugReasons && probeProfile.debugReasons.includes("probeDelaysCastle"), "probeDelaysCastle");
+    add(probeProfile.debugReasons && probeProfile.debugReasons.includes("probeNoProgress"), "probeNoProgress");
+    add(probeProfile.debugReasons && probeProfile.debugReasons.includes("repeatedEdgePawn"), "repeatedEdgePawn");
+    add(probeProfile.debugReasons && probeProfile.debugReasons.includes("repeatedLoosePawnPush"), "repeatedLoosePawnPush");
     add(probeProfile.classification === "bad" && probeProfile.debugReasons && probeProfile.debugReasons.includes("probeHasNoFollowUp"), "probeHasNoFollowUp");
     add(isEarlyBishopHeadPawnPush(state, move, side), "earlyBishopHeadPawnPush");
     add(loosePawnPushRisk(state, move, side) > 0, "loosePawnPush");
@@ -1825,7 +2003,9 @@
     add(kingProfile.classification === "bad", "badKingMove");
     add(kingProfile.attacked, "kingMovesTowardDanger");
     add(kingProfile.isKingMove && kingProfile.nearbyGuards <= 0, "kingLeavesDefense");
+    add(kingProfile.debugReasons && kingProfile.debugReasons.includes("kingExposedToLinePiece"), "kingExposedToLinePiece");
     add(kingProfile.isKingMove && kingProfile.escapeRoutes <= 1, "kingReducesEscapeRoutes");
+    add(kingProfile.debugReasons && kingProfile.debugReasons.includes("kingMoveNoPurpose"), "kingMoveNoPurpose");
     const majorProfile = majorSortieProfile(state, move, side);
     add(earlyMajorPieceSortiePenalty(state, move, side) > 0, "earlyMajorSortie");
     add(majorProfile.classification === "bad", "majorOverextension");
@@ -1861,8 +2041,11 @@
     add(centralProfile.classification === "bad", "centralBreakthroughRisk");
     add(centralProfile.debugReasons && centralProfile.debugReasons.includes("unsupportedCentralPush"), "unsupportedCentralPush");
     add(centralProfile.centralPieceHangs, "centralPieceHangs");
+    add(centralProfile.centralPieceHangs && movingPiece(state, move) && ["S", "N", "B"].includes(movingPiece(state, move).type), "centralMinorHangs");
+    add(centralProfile.centralPieceHangs && !centralProfile.defended, "centralPieceNoSupport");
     add(centralProfile.centralExchangeLosesMaterial, "centralExchangeLosesMaterial");
     add(centralProfile.debugReasons && centralProfile.debugReasons.includes("centralAttackHasNoFollowUp"), "centralAttackHasNoFollowUp");
+    add(centralProfile.debugReasons && centralProfile.debugReasons.includes("centralAttackHasNoFollowUp"), "centralPieceNoFollowUp");
     add(centralProfile.opensCenterAgainstOwnKing, "opensCenterAgainstOwnKing");
     add(majorSacrificeRisk(state, move, side, exchange) > 0, "majorSacrificeRisk");
     add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0, "aimlessEarlyMajorCapture");
@@ -1988,6 +2171,13 @@
       hasFollowUp: profile.hasFollowUp,
       ignoresCastleDevelopment: profile.ignoresCastleDevelopment,
       repeatedProbeMove: profile.repeatedProbeMove,
+      recentProbeCount: profile.recentProbeCount,
+      recentEdgePawnCount: profile.recentEdgePawnCount,
+      similarProbeInRecentMoves: profile.similarProbeInRecentMoves,
+      castleDevelopmentDelayed: profile.castleDevelopmentDelayed,
+      naturalDevelopmentAvailable: profile.naturalDevelopmentAvailable,
+      progressAfterProbe: profile.progressAfterProbe,
+      repeatedClassification: profile.repeatedClassification,
       pressure: profile.pressure,
       support: profile.support,
       exchangeSee: profile.exchangeSee,
@@ -2062,11 +2252,23 @@
     return {
       classification: profile.classification,
       attacked: profile.attacked,
+      distanceToGoldSilverBefore: distanceToNearestGoldSilver(state, side, move.from),
+      distanceToGoldSilverAfter: distanceToNearestGoldSilver(state, side, move.to),
+      enemyAttackNearKingBefore: profile.enemyAttackNearKingBefore,
+      enemyAttackNearKingAfter: profile.enemyAttackNearKingAfter,
+      escapeRoutesBefore: profile.beforeEscapeRoutes,
+      escapeRoutesAfter: profile.escapeRoutes,
+      linePiecePressureBefore: profile.linePiecePressureBefore,
+      linePiecePressureAfter: profile.linePiecePressureAfter,
+      castleDirectionScore: profile.castleDirectionScore,
+      kingSafetyDelta: profile.kingSafetyDelta,
       nearbyGuards: profile.nearbyGuards,
       escapeRoutes: profile.escapeRoutes,
       advanced: profile.advanced,
       fromWing: profile.fromWing,
-      toWing: profile.toWing
+      toWing: profile.toWing,
+      positiveReasons: profile.positiveReasons,
+      debugReasons: profile.debugReasons
     };
   }
 

@@ -7,7 +7,7 @@ importScripts(
   "evaluation.js?v=85",
   "opening-book.js?v=1",
   "opening.js?v=86",
-  "ai.js?v=107"
+  "ai.js?v=108"
 );
 
 self.onmessage = event => {

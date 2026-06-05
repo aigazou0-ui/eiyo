@@ -375,6 +375,46 @@ function exposedKingMoveState() {
   return state;
 }
 
+function probeSpamState() {
+  const state = emptyState("b", 18);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][3] = piece("P", "b");
+  state.history.push({ from: { r: 6, c: 3 }, to: { r: 5, c: 3 }, piece: "P", promote: false, capture: false });
+  state.history.push({ from: { r: 6, c: 2 }, to: { r: 5, c: 2 }, piece: "P", promote: false, capture: false });
+  return state;
+}
+
+function edgeResponseAfterProbeState() {
+  const state = stateFromMoves(["1g1f", "9c9d"]);
+  return state;
+}
+
+function repeatedEscapeEdgeState() {
+  const state = usefulEdgePawnState();
+  state.history.push({ from: { r: 6, c: 8 }, to: { r: 5, c: 8 }, piece: "P", promote: false, capture: false });
+  return state;
+}
+
+function centralHangingMinorState() {
+  const state = emptyState("b", 26);
+  state.board[8][0] = piece("K", "b");
+  state.board[0][8] = piece("K", "w");
+  state.board[6][4] = piece("S", "b");
+  state.board[0][4] = piece("R", "w");
+  return state;
+}
+
+function centralSupportedMinorState() {
+  const state = emptyState("b", 26);
+  state.board[8][0] = piece("K", "b");
+  state.board[0][8] = piece("K", "w");
+  state.board[6][4] = piece("S", "b");
+  state.board[6][3] = piece("G", "b");
+  state.board[5][5] = piece("B", "b");
+  return state;
+}
+
 function run() {
   const failures = [];
 
@@ -755,6 +795,75 @@ function run() {
     const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h", "5e5f", "5g5f", "4d5e", "2g2f", "7c7d", "5f5e"]);
     failures.push(assertTest("realgame-major-capture-2b5e-not-sortie", lacksReasonForMove(state, "2b5e", ["earlyMajorSortie", "majorSortieHasNoFollowUp", "majorOverextension"]), { moveUsi: "2b5e", debug: debugForUsi(state, "2b5e") }));
     failures.push(assertTest("realgame-major-capture-2b5e-positive", hasPositiveReasonForMove(state, "2b5e", ["majorCreatesPressure", "majorExchangeOk", "majorHasFollowUp"]), { moveUsi: "2b5e", debug: debugForUsi(state, "2b5e") }));
+  }
+
+  {
+    const state = probeSpamState();
+    failures.push(assertTest("probe-spam-delays-castle", hasReasonForMove(state, "6g6f", ["repeatedProbeMove", "probeSpam", "probeDelaysCastle"]), { moveUsi: "6g6f", debug: debugForUsi(state, "6g6f") }));
+    const probe = debugForUsi(state, "6g6f").probeMoveDebug || {};
+    failures.push(assertTest("probe-spam-debug-has-recent-counts", probe.recentProbeCount >= 1 && probe.castleDevelopmentDelayed === true, { moveUsi: "6g6f", debug: debugForUsi(state, "6g6f") }));
+  }
+
+  {
+    const state = edgeResponseAfterProbeState();
+    failures.push(assertTest("repeated-edge-response-not-spam", lacksReasonForMove(state, "9g9f", ["repeatedProbeMove", "probeSpam", "unsupportedAttackProbe"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+    failures.push(assertTest("repeated-edge-response-positive", hasPositiveReasonForMove(state, "9g9f", ["respondsToOpponentEdge", "respondsToOpponentPlan"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+  }
+
+  {
+    const state = repeatedEscapeEdgeState();
+    failures.push(assertTest("repeated-edge-escape-route-not-spam", lacksReasonForMove(state, "9g9f", ["repeatedProbeMove", "probeSpam", "badEdgePawn"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+    failures.push(assertTest("repeated-edge-escape-route-positive", hasPositiveReasonForMove(state, "9g9f", ["edgeEscapeRoute", "createsEscapeRoute"]), { moveUsi: "9g9f", debug: debugForUsi(state, "9g9f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "8d8e", "2g2f", "7c7d", "3i4h", "8a7c", "5i6i", "8e8f", "6i7i", "6a5b", "6g6f", "6c6d", "7i6h", "6b6c", "4i5h", "5c5d"]);
+    failures.push(assertTest("realgame-rook-pawn-probe-not-spam", lacksReasonForMove(state, "2f2e", ["repeatedProbeMove", "probeSpam", "probeDelaysCastle"]), { moveUsi: "2f2e", debug: debugForUsi(state, "2f2e") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g"]);
+    failures.push(assertTest("realgame-king-wander-forward-sideways-6b7b", hasReasonForMove(state, "6b7b", ["kingWander", "badKingMove", "kingReducesEscapeRoutes"]), { moveUsi: "6b7b", debug: debugForUsi(state, "6b7b") }));
+    const kingDebug = debugForUsi(state, "6b7b").kingMoveDebug || {};
+    failures.push(assertTest("king-wander-debug-has-deltas", Number.isFinite(kingDebug.kingSafetyDelta) && Number.isFinite(kingDebug.escapeRoutesAfter), { moveUsi: "6b7b", debug: debugForUsi(state, "6b7b") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d"]);
+    failures.push(assertTest("king-natural-castle-direction-debug-positive", hasPositiveReasonForMove(state, "5i6h", ["goodCastleKingMove", "kingMovesTowardCastle"]), { moveUsi: "5i6h", debug: debugForUsi(state, "5i6h") }));
+    failures.push(assertTest("king-natural-castle-direction-not-wander", lacksReasonForMove(state, "5i6h", ["kingWander", "kingMoveNoPurpose", "kingMovesTowardDanger"]), { moveUsi: "5i6h", debug: debugForUsi(state, "5i6h") }));
+  }
+
+  {
+    const state = badKingMoveState();
+    failures.push(assertTest("king-forward-real-danger-reason", hasReasonForMove(state, "5h5g", ["kingWander", "badKingMove", "kingLeavesDefense"]), { moveUsi: "5h5g", debug: debugForUsi(state, "5h5g") }));
+  }
+
+  {
+    const state = exposedKingMoveState();
+    failures.push(assertTest("king-no-purpose-still-labeled", hasReasonForMove(state, "5i5h", ["kingWander", "kingMoveNoPurpose", "kingLeavesDefense"]), { moveUsi: "5i5h", debug: debugForUsi(state, "5i5h") }));
+  }
+
+  {
+    const state = centralHangingMinorState();
+    failures.push(assertTest("central-minor-hangs-without-support", hasReasonForMove(state, "5g5f", ["centralPieceHangs", "centralMinorHangs", "centralPieceNoSupport"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = centralSupportedMinorState();
+    failures.push(assertTest("central-supported-minor-not-hanging", lacksReasonForMove(state, "5g5f", ["centralPieceHangs", "centralMinorHangs", "centralPieceNoSupport"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+    failures.push(assertTest("central-supported-minor-positive", hasPositiveReasonForMove(state, "5g5f", ["centralPieceSupported", "centralPieceHasFollowUp"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const state = unsupportedSilverState();
+    failures.push(assertTest("central-minor-unsupported-still-labeled", hasReasonForMove(state, "5e5d", ["unsupportedCentralPush", "unsupportedSilverAdvance"]), { moveUsi: "5e5d", debug: debugForUsi(state, "5e5d") }));
+  }
+
+  {
+    const state = supportedSilverAttackState();
+    failures.push(assertTest("minor-supported-attack-not-loose", lacksReasonForMove(state, "5g5f", ["looseMinorShape", "minorHasNoRole", "centralPieceHangs"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+    failures.push(assertTest("minor-supported-attack-positive", hasPositiveReasonForMove(state, "5g5f", ["naturalMinorDevelopment", "minorSupportsAttack"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
   }
 
   const failed = failures.filter(Boolean);
