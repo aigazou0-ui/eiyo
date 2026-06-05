@@ -983,13 +983,14 @@
     if (exchange.hanging) {
       const levelScale = 0.6 + level * 0.12;
       risk += (exchange.immediateLoss - exchange.captureGain) * levelScale;
+      if (!exchange.check && !exchange.mateThreat) risk += 520 + level * 70;
       if (piece && (piece.type === "R" || piece.type === "B")) risk += 500 + level * 55;
     }
     risk += majorSacrificeRisk(state, move, side, exchange) * (0.9 + level * 0.08);
     risk += aimlessEarlyMajorCaptureRisk(state, move, side, exchange) * (0.9 + level * 0.06);
     risk += centralBreakthroughRisk(state, move, side) * (0.75 + level * 0.07);
     if (exchange.see < -80 && !exchange.check && !exchange.mateThreat) {
-      risk += Math.abs(exchange.see) * (0.9 + level * 0.12);
+      risk += 420 + Math.abs(exchange.see) * (1.15 + level * 0.15);
       if (piece && (piece.type === "R" || piece.type === "B")) risk += Math.abs(exchange.see) * 0.7;
     }
     if (isOpeningPawnSacrifice(state, move, side, exchange)) {
@@ -1123,14 +1124,31 @@
     ));
   }
 
-  function safeFastSelectionItems(state, items) {
-    const annotated = (items || []).map(item => Object.assign({}, item, {
-      shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn) +
-        (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0)
-    }));
-    const safe = annotated.filter(item => item.shapeRisk < 700);
+  function safeFastSelectionItems(state, items, level, cfg) {
+    const annotated = (items || []).map(item => {
+      const activeLevel = level || 10;
+      const activeCfg = cfg || config(activeLevel, { mobile: true });
+      const exchange = exchangeAfterMove(state, item.move, state.turn);
+      return Object.assign({}, item, {
+        shapeRisk: looseMinorPieceShapeRisk(state, item.move, state.turn) +
+          (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0),
+        fastRisk: tacticalRisk(state, item.move, state.turn, activeLevel, activeCfg),
+        badMoveReasons: badMoveReasons(state, item.move, state.turn, activeLevel, activeCfg, exchange)
+      });
+    });
+    const severeRisk = reasons => {
+      if (!Array.isArray(reasons)) return 0;
+      let risk = 0;
+      if (reasons.includes("allowsOpponentMateInOne")) risk += MATE / 3;
+      if (reasons.includes("majorSacrificeRisk")) risk += 60000;
+      if (reasons.includes("badStaticExchange")) risk += 52000;
+      if (reasons.includes("hangingAfterMove")) risk += 42000;
+      return risk;
+    };
+    const safe = annotated.filter(item => item.shapeRisk < 700 && severeRisk(item.badMoveReasons) <= 0);
     return (safe.length ? safe : annotated)
-      .sort((a, b) => (b.score - b.shapeRisk * 80) - (a.score - a.shapeRisk * 80));
+      .sort((a, b) => (b.score - b.shapeRisk * 80 - b.fastRisk - severeRisk(b.badMoveReasons)) -
+        (a.score - a.shapeRisk * 80 - a.fastRisk - severeRisk(a.badMoveReasons)));
   }
 
   function lateSafeFastItems(state, items) {
@@ -1168,7 +1186,7 @@
     }
 
     if (cfg.mobile && state.history.length < 34 && base.depth <= 1 && base.candidates.length) {
-      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length))));
+      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)), lv, cfg));
       const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
@@ -1187,7 +1205,7 @@
     }
 
     if (cfg.mobile && (state.history.length > 30 || base.nodes > 70) && base.depth <= 1) {
-      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length))));
+      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)), lv, cfg));
       const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
