@@ -795,8 +795,60 @@
       span.className = cpuScore > 0 ? "delta-up" : cpuScore < 0 ? "delta-down" : "delta-flat";
       span.textContent = `${cpuScore >= 0 ? "+" : ""}${Math.round(cpuScore)}`;
       div.append(strong, span);
+      if (item.selected) {
+        const detail = cpuDebugDetail(data.baseState || state, item, text);
+        if (detail) div.appendChild(detail);
+      }
       container.appendChild(div);
     });
+  }
+
+  function formatSigned(value) {
+    const rounded = Math.round(Number(value) || 0);
+    return `${rounded >= 0 ? "+" : ""}${rounded}`;
+  }
+
+  function cpuDebugDetail(baseState, item, moveText) {
+    if (!item || !item.move || !window.ShogiEvaluation.scoreBreakdown) return null;
+    let after;
+    try {
+      after = window.ShogiBoard.applyMove(baseState, item.move);
+    } catch {
+      return null;
+    }
+    const breakdown = window.ShogiEvaluation.scoreBreakdown(after, cpuSide);
+    const profile = currentCpuProfile();
+    const detailDebug = window.ShogiAI.debugMove
+      ? window.ShogiAI.debugMove(baseState, item.move, getLevel(), aiSearchOptions(profile))
+      : null;
+    const debug = Object.assign({}, detailDebug || {}, item.debug || {});
+    if (!item.debug || !Number.isFinite(item.debug.aiScore)) {
+      debug.aiScore = Number.isFinite(item.score) ? item.score : breakdown.total;
+    }
+    const box = document.createElement("div");
+    box.className = "candidate-debug-detail";
+    const rows = [
+      ["selectedMove", moveText],
+      ["evaluationScore", formatSigned(debug.aiScore ?? item.score ?? breakdown.total)],
+      ["searchDepth", item.depth ?? 0],
+      ["searchedNodes", item.nodes ?? 0],
+      ["materialScore", formatSigned(breakdown.materialScore)],
+      ["kingSafetyScore", formatSigned(breakdown.kingSafetyScore)],
+      ["pieceActivityScore", formatSigned(breakdown.pieceActivityScore)],
+      ["pieceSafetyScore", formatSigned(breakdown.pieceSafetyScore)],
+      ["attackScore", formatSigned(breakdown.attackScore)],
+      ["openingShapeScore", formatSigned(breakdown.openingShapeScore)],
+      ["endgameScore", formatSigned(breakdown.endgameScore)],
+      ["badMoveReasons", (debug.badMoveReasons && debug.badMoveReasons.length) ? debug.badMoveReasons.join(", ") : "none"]
+    ];
+    rows.forEach(([key, value]) => {
+      const label = document.createElement("span");
+      label.textContent = key;
+      const val = document.createElement("strong");
+      val.textContent = String(value);
+      box.append(label, val);
+    });
+    return box;
   }
 
   function pvText(baseState, pv) {
@@ -1063,7 +1115,7 @@
       }
 
       let settled = false;
-      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=85");
+      if (!aiWorker) aiWorker = new Worker("js/ai-worker.js?v=86");
       const id = `${Date.now()}-${Math.random()}`;
       const cleanup = () => {
         aiWorkerRequest = null;

@@ -1078,11 +1078,37 @@
       aiScore: displayScore,
       rawScore: rawDisplayScore,
       risk: Math.round(risk),
+      badMoveReasons: badMoveReasons(state, item.move, state.turn, level, cfg, exchange),
       reason: ""
     });
     const annotated = Object.assign({}, item, { debug, selected: !!selected });
     annotated.debug.reason = reasonText(annotated, !!selected, !!forceBest, phase || phaseOf(state));
     return annotated;
+  }
+
+  function badMoveReasons(state, move, side, level, cfg, exchange) {
+    const reasons = [];
+    const add = (condition, name) => {
+      if (condition) reasons.push(name);
+    };
+    add(isOpeningPawnSacrifice(state, move, side, exchange), "openingPawnSacrifice");
+    add(isEarlyBishopHeadPawnPush(state, move, side), "earlyBishopHeadPawnPush");
+    add(loosePawnPushRisk(state, move, side) > 0, "loosePawnPush");
+    add(unsupportedDropRisk(state, move, side) > 0, "unsupportedDrop");
+    add(earlyMajorDropPenalty(state, move, side) > 0, "earlyMajorDrop");
+    add(kingWanderPenalty(state, move, side) > 0, "kingWander");
+    add(earlyMajorPieceSortiePenalty(state, move, side) > 0, "earlyMajorSortie");
+    add(unsupportedAttackProbeRisk(state, move, side) > 0, "unsupportedAttackProbe");
+    add(looseMinorPieceShapeRisk(state, move, side) > 0, "looseMinorShape");
+    add(centralBreakthroughRisk(state, move, side) > 0, "centralBreakthroughRisk");
+    add(majorSacrificeRisk(state, move, side, exchange) > 0, "majorSacrificeRisk");
+    add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0, "aimlessEarlyMajorCapture");
+    add(quietMajorPromotionPenalty(state, move, side) > 0, "quietMajorPromotion");
+    add(repetitionShuffleRisk(state, move) > 0, "repetitionShuffle");
+    add(exchange && exchange.hanging, "hangingAfterMove");
+    add(exchange && exchange.see < -80 && !exchange.check && !exchange.mateThreat, "badStaticExchange");
+    add(allowsOpponentMateInOne(state, move), "allowsOpponentMateInOne");
+    return reasons;
   }
 
   function annotateList(state, candidates, level, selectedMove, forceBest, phase, options = {}) {
@@ -1943,6 +1969,19 @@
     return searchRoot(state, level, options).bestMove;
   }
 
+  function debugMove(state, move, level, options = {}) {
+    if (!move) return null;
+    return withDebug(
+      state,
+      { move, score: 0, depth: 0, nodes: 0 },
+      normalizedLevel(level),
+      true,
+      false,
+      phaseOf(state),
+      options
+    ).debug;
+  }
+
   function ensureLegalMove(state, move, fallbackLevel) {
     if (window.ShogiRules.isLegalMove(state, move, state.turn)) return move;
     const legal = window.ShogiRules.legalMoves(state, state.turn);
@@ -1953,5 +1992,5 @@
       .sort((a, b) => b.score - a.score)[0].move;
   }
 
-  window.ShogiAI = { candidates, chooseMove, chooseMoveWithRandomness, searchRoot, ensureLegalMove };
+  window.ShogiAI = { candidates, chooseMove, chooseMoveWithRandomness, searchRoot, ensureLegalMove, debugMove };
 })();

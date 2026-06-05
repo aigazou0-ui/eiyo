@@ -382,11 +382,22 @@
     return Math.round(score * Math.max(0.25, 1 - ply / 42));
   }
 
-  function scoreState(state) {
-    let score = 0;
+  function rawBreakdown(state) {
+    const breakdown = {
+      materialScore: 0,
+      kingSafetyScore: 0,
+      pieceActivityScore: 0,
+      pieceSafetyScore: 0,
+      attackScore: 0,
+      openingShapeScore: 0,
+      endgameScore: 0,
+      checkScore: 0,
+      phase: detectGamePhase(state),
+      total: 0
+    };
     const blackKing = findKing(state, "b");
     const whiteKing = findKing(state, "w");
-    const phase = detectGamePhase(state);
+    const phase = breakdown.phase;
     const attacks = buildAttackMaps(state);
 
     for (let r = 0; r < 9; r++) {
@@ -395,31 +406,52 @@
         if (!piece) continue;
         const enemyKing = piece.owner === "b" ? whiteKing : blackKing;
         const value = pieceValue(piece) + positionBonus(piece, r, c, enemyKing);
-        score += sign(piece.owner) * value;
+        breakdown.materialScore += sign(piece.owner) * value;
       }
     }
 
     for (const side of ["b", "w"]) {
       for (const [type, count] of Object.entries(state.hands[side])) {
         if (!count) continue;
-        score += sign(side) * handBonus(type, count);
+        breakdown.materialScore += sign(side) * handBonus(type, count);
       }
     }
 
     const weights = phaseWeights(phase);
-    score += (kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks)) * weights.king;
-    score += (attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks)) * weights.attack;
-    score += middleHandPressure(state, "b", phase, attacks) - middleHandPressure(state, "w", phase, attacks);
-    score += endgamePressure(state, "b", phase, attacks) - endgamePressure(state, "w", phase, attacks);
-    score += enteringKingScore(state, "b", phase, attacks) - enteringKingScore(state, "w", phase, attacks);
-    score += (activityScore(state, "b", phase) - activityScore(state, "w", phase)) * weights.activity;
-    score -= (loosePiecePenalty(state, "b", phase, attacks) - loosePiecePenalty(state, "w", phase, attacks)) * weights.loose;
-    score += (majorPieceSafety(state, "b", phase, attacks) - majorPieceSafety(state, "w", phase, attacks)) * weights.major;
-    score += (formationScore(state, "b", phase) - formationScore(state, "w", phase)) * weights.shape;
-    score += earlyGameBonus(state, "b") - earlyGameBonus(state, "w");
-    if (window.ShogiRules.inCheck(state, "w")) score += 260;
-    if (window.ShogiRules.inCheck(state, "b")) score -= 260;
-    return Math.round(score);
+    breakdown.kingSafetyScore = (kingSafety(state, "b", phase, attacks) - kingSafety(state, "w", phase, attacks)) * weights.king;
+    breakdown.attackScore = (attackKingScore(state, "b", phase, attacks) - attackKingScore(state, "w", phase, attacks)) * weights.attack +
+      middleHandPressure(state, "b", phase, attacks) - middleHandPressure(state, "w", phase, attacks);
+    breakdown.endgameScore = endgamePressure(state, "b", phase, attacks) - endgamePressure(state, "w", phase, attacks) +
+      enteringKingScore(state, "b", phase, attacks) - enteringKingScore(state, "w", phase, attacks);
+    breakdown.pieceActivityScore = (activityScore(state, "b", phase) - activityScore(state, "w", phase)) * weights.activity;
+    breakdown.pieceSafetyScore = -((loosePiecePenalty(state, "b", phase, attacks) - loosePiecePenalty(state, "w", phase, attacks)) * weights.loose) +
+      (majorPieceSafety(state, "b", phase, attacks) - majorPieceSafety(state, "w", phase, attacks)) * weights.major;
+    breakdown.openingShapeScore = (formationScore(state, "b", phase) - formationScore(state, "w", phase)) * weights.shape +
+      earlyGameBonus(state, "b") - earlyGameBonus(state, "w");
+    if (window.ShogiRules.inCheck(state, "w")) breakdown.checkScore += 260;
+    if (window.ShogiRules.inCheck(state, "b")) breakdown.checkScore -= 260;
+    breakdown.total = breakdown.materialScore + breakdown.kingSafetyScore + breakdown.pieceActivityScore +
+      breakdown.pieceSafetyScore + breakdown.attackScore + breakdown.openingShapeScore +
+      breakdown.endgameScore + breakdown.checkScore;
+    Object.keys(breakdown).forEach(key => {
+      if (typeof breakdown[key] === "number") breakdown[key] = Math.round(breakdown[key]);
+    });
+    return breakdown;
+  }
+
+  function scoreState(state) {
+    return rawBreakdown(state).total;
+  }
+
+  function scoreBreakdown(state, side = "b") {
+    const raw = rawBreakdown(state);
+    const scale = side === "w" ? -1 : 1;
+    const keys = ["materialScore", "kingSafetyScore", "pieceActivityScore", "pieceSafetyScore", "attackScore", "openingShapeScore", "endgameScore", "checkScore", "total"];
+    const result = { phase: raw.phase };
+    keys.forEach(key => {
+      result[key] = raw[key] * scale;
+    });
+    return result;
   }
 
   function blackPercent(state) {
@@ -436,5 +468,5 @@
     return `${side}勝勢`;
   }
 
-  window.ShogiEvaluation = { scoreState, blackPercent, label, pieceValue, detectGamePhase };
+  window.ShogiEvaluation = { scoreState, scoreBreakdown, blackPercent, label, pieceValue, detectGamePhase };
 })();

@@ -4,10 +4,10 @@ importScripts(
   "pieces.js?v=75",
   "board.js?v=75",
   "rules.js?v=80",
-  "evaluation.js?v=83",
+  "evaluation.js?v=84",
   "opening-book.js?v=1",
   "opening.js?v=86",
-  "ai.js?v=99"
+  "ai.js?v=100"
 );
 
 self.onmessage = event => {
