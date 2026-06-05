@@ -550,6 +550,133 @@
     return 0;
   }
 
+  function bishopMobilityAfterMove(state, move, side) {
+    if (!move || !move.to) return 0;
+    const piece = move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
+    if (!piece || piece.type !== "B") return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    let mobility = 0;
+    for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      let r = move.to.r + dr;
+      let c = move.to.c + dc;
+      while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+        const target = state.board[r][c];
+        if (!target) mobility += 1;
+        else {
+          if (target.owner !== side) mobility += 1;
+          break;
+        }
+        r += dr;
+        c += dc;
+      }
+    }
+    window.ShogiBoard.undoMove(state, undo);
+    return mobility;
+  }
+
+  function badBishopMoveRisk(state, move, side) {
+    const piece = move && move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
+    if (!piece || piece.type !== "B" || piece.promoted) return 0;
+    if (aimlessEarlyMajorCaptureRisk(state, move, side, exchangeAfterMove(state, move, side)) > 0) return 1600;
+    if (forbiddenEarlyEdgeBishop(state, move, side) || leavesBadEdgeBishopBoard(state, move, side)) return 1800;
+    const mobility = bishopMobilityAfterMove(state, move, side);
+    if (state.history.length < 40 && mobility <= 4 && !move.capture) return 700;
+    return 0;
+  }
+
+  function trappedBishopRisk(state, move, side) {
+    const piece = move && move.drop ? { type: move.piece, owner: side, promoted: false } : movingPiece(state, move);
+    if (!piece || piece.type !== "B" || piece.promoted) return 0;
+    const mobility = bishopMobilityAfterMove(state, move, side);
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, window.ShogiBoard.opponent(side), move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (mobility <= 3 && (attacked || !defended)) return 1400;
+    return 0;
+  }
+
+  function unsupportedSilverAdvanceRisk(state, move, side) {
+    if (!move || move.drop || !move.from) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== "S") return 0;
+    const advanced = advancedRank(side, move.to);
+    if (advanced < 3 || move.capture) return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, window.ShogiBoard.opponent(side), move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (!defended || attacked) return state.history.length < 38 ? 900 : 520;
+    return 0;
+  }
+
+  function silverLeavesCastleRisk(state, move, side) {
+    if (!move || move.drop || !move.from || state.history.length >= 42) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== "S") return 0;
+    const king = findKing(state, side);
+    if (!king) return 0;
+    const fromDist = distance(move.from, king);
+    const toDist = distance(move.to, king);
+    if (fromDist <= 2 && toDist >= 4 && !move.capture) return 760;
+    return 0;
+  }
+
+  function majorOverextensionRisk(state, move, side, type) {
+    if (!move || move.drop || !move.from || state.history.length >= 46) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type !== type) return 0;
+    const advanced = advancedRank(side, move.to);
+    if (advanced < 5) return 0;
+    const exchange = exchangeAfterMove(state, move, side);
+    if (exchange.check || exchange.mateThreat || exchange.see > 120) return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    const attacked = window.ShogiRules.attacksSquare(state, window.ShogiBoard.opponent(side), move.to);
+    const defended = window.ShogiRules.attacksSquare(state, side, move.to);
+    window.ShogiBoard.undoMove(state, undo);
+    if (attacked || !defended || exchange.see < -40) return type === "R" ? 1100 : 900;
+    return 0;
+  }
+
+  function badSacrificeCheckRisk(state, move, side, exchange) {
+    if (!exchange || !exchange.check || exchange.mateThreat || state.history.length >= 74) return 0;
+    const piece = movingPiece(state, move);
+    if (!piece || piece.type === "P" || piece.type === "K") return 0;
+    if (exchange.see < -60 || exchange.hanging) return 1300 + Math.abs(Math.min(0, exchange.see));
+    return 0;
+  }
+
+  function weakKingShapeRisk(state, move, side) {
+    if (!move || state.history.length >= 36 || window.ShogiRules.inCheck(state, side)) return 0;
+    const king = findKing(state, side);
+    if (!king) return 0;
+    const home = side === "b" ? 8 : 0;
+    const kingStillCentral = Math.abs(king.c - 4) <= 1 && Math.abs(king.r - home) <= 1;
+    if (!kingStillCentral) return 0;
+    const undo = window.ShogiBoard.makeMove(state, move);
+    let nearGuards = 0;
+    for (let r = Math.max(0, king.r - 2); r <= Math.min(8, king.r + 2); r += 1) {
+      for (let c = Math.max(0, king.c - 2); c <= Math.min(8, king.c + 2); c += 1) {
+        const p = state.board[r][c];
+        if (p && p.owner === side && (p.type === "G" || p.type === "S")) nearGuards += 1;
+      }
+    }
+    window.ShogiBoard.undoMove(state, undo);
+    return nearGuards < 2 ? 420 : 0;
+  }
+
+  function ignoresCastleDevelopmentRisk(state, move, side) {
+    if (!move || state.history.length >= 30 || window.ShogiRules.inCheck(state, side)) return 0;
+    const piece = move.drop ? { type: move.piece, owner: side } : movingPiece(state, move);
+    if (!piece || piece.type === "K") return 0;
+    const king = findKing(state, side);
+    if (!king) return 0;
+    const toKing = distance(move.to, king);
+    if ((piece.type === "G" || piece.type === "S") && toKing <= 2) return 0;
+    if (["R", "B", "S"].includes(piece.type) && advancedRank(side, move.to) >= 3 && weakKingShapeRisk(state, move, side)) return 360;
+    return 0;
+  }
+
   function fastShapeRisk(state, move, side) {
     let risk = 0;
     if (isEarlyBishopHeadPawnPush(state, move, side)) risk += 9000;
@@ -1001,6 +1128,15 @@
     }
     risk += loosePawnPushRisk(state, move, side) * (1.25 + level * 0.1);
     risk += unsupportedAttackProbeRisk(state, move, side) * (0.85 + level * 0.08);
+    risk += badBishopMoveRisk(state, move, side) * (0.85 + level * 0.08);
+    risk += trappedBishopRisk(state, move, side) * (0.9 + level * 0.08);
+    risk += unsupportedSilverAdvanceRisk(state, move, side) * (0.85 + level * 0.08);
+    risk += silverLeavesCastleRisk(state, move, side) * (0.75 + level * 0.06);
+    risk += majorOverextensionRisk(state, move, side, "R") * (0.85 + level * 0.08);
+    risk += majorOverextensionRisk(state, move, side, "B") * (0.85 + level * 0.08);
+    risk += weakKingShapeRisk(state, move, side) * (0.45 + level * 0.04);
+    risk += ignoresCastleDevelopmentRisk(state, move, side) * (0.55 + level * 0.05);
+    risk += badSacrificeCheckRisk(state, move, side, exchange) * (0.95 + level * 0.08);
     if (isCheckMove && !exchange.mateThreat && exchange.see < -40) {
       risk += 420 + Math.abs(exchange.see) * (1.1 + level * 0.08);
     }
@@ -1099,6 +1235,16 @@
     add(earlyMajorDropPenalty(state, move, side) > 0, "earlyMajorDrop");
     add(kingWanderPenalty(state, move, side) > 0, "kingWander");
     add(earlyMajorPieceSortiePenalty(state, move, side) > 0, "earlyMajorSortie");
+    add(badBishopMoveRisk(state, move, side) > 0, "badBishopMove");
+    add(trappedBishopRisk(state, move, side) > 0, "trappedBishop");
+    add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0 && movingPiece(state, move) && movingPiece(state, move).type === "B", "earlyMeaninglessBishopExchange");
+    add(unsupportedSilverAdvanceRisk(state, move, side) > 0, "unsupportedSilverAdvance");
+    add(silverLeavesCastleRisk(state, move, side) > 0, "silverLeavesCastle");
+    add(majorOverextensionRisk(state, move, side, "R") > 0, "rookOverextension");
+    add(majorOverextensionRisk(state, move, side, "B") > 0, "bishopOverextension");
+    add(weakKingShapeRisk(state, move, side) > 0, "weakKingShape");
+    add(ignoresCastleDevelopmentRisk(state, move, side) > 0, "ignoresCastleDevelopment");
+    add(badSacrificeCheckRisk(state, move, side, exchange) > 0, "badSacrificeCheck");
     add(unsupportedAttackProbeRisk(state, move, side) > 0, "unsupportedAttackProbe");
     add(looseMinorPieceShapeRisk(state, move, side) > 0, "looseMinorShape");
     add(centralBreakthroughRisk(state, move, side) > 0, "centralBreakthroughRisk");
@@ -1106,6 +1252,8 @@
     add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0, "aimlessEarlyMajorCapture");
     add(quietMajorPromotionPenalty(state, move, side) > 0, "quietMajorPromotion");
     add(repetitionShuffleRisk(state, move) > 0, "repetitionShuffle");
+    add(repetitionShuffleRisk(state, move) > 0, "repeatedPieceMove");
+    add(isRecentReverse(state, move), "pointlessRetreat");
     add(exchange && exchange.hanging, "hangingAfterMove");
     add(exchange && exchange.see < -80 && !exchange.check && !exchange.mateThreat, "badStaticExchange");
     add(allowsOpponentMateInOne(state, move), "allowsOpponentMateInOne");
