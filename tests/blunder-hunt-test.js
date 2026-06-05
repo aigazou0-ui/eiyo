@@ -256,6 +256,55 @@ function inspectMove(state, move, beforeEval, afterEval) {
   return issues;
 }
 
+function bishopMobility(state, square, side) {
+  let mobility = 0;
+  for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+    let r = square.r + dr;
+    let c = square.c + dc;
+    while (context.ShogiBoard.inside(r, c)) {
+      const target = state.board[r][c];
+      if (!target) mobility += 1;
+      else {
+        if (target.owner !== side) mobility += 1;
+        break;
+      }
+      r += dr;
+      c += dc;
+    }
+  }
+  return mobility;
+}
+
+function inspectBoardShape(state, ply) {
+  const issues = [];
+  if (ply > 64) return issues;
+  for (const side of ["b", "w"]) {
+    const enemyKing = kingSquare(state, context.ShogiBoard.opponent(side));
+    const ownKing = kingSquare(state, side);
+    for (let r = 0; r < 9; r += 1) {
+      for (let c = 0; c < 9; c += 1) {
+        const p = state.board[r][c];
+        if (!p || p.owner !== side || p.type !== "B" || p.promoted) continue;
+        const square = { r, c };
+        const mobility = bishopMobility(state, square, side);
+        const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
+        if ((c === 0 || c === 8) && mobility <= 5 && pressure === 0 && distance(square, ownKing) > 2) {
+          issues.push({
+            severity: 4,
+            type: "edge-stranded-bishop-board",
+            ply,
+            side: sideName(side),
+            move: "board",
+            mobility,
+            pressure
+          });
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 function runGame(gameIndex) {
   let state = context.ShogiBoard.newState();
   state.aiProfile = { b: profileFor(gameIndex, "b"), w: profileFor(gameIndex, "w") };
@@ -288,6 +337,7 @@ function runGame(gameIndex) {
     const next = context.ShogiBoard.applyMove(state, cloneMove(move));
     const afterEval = context.ShogiEvaluation.scoreState(next);
     issues.push(...inspectMove(state, move, beforeEval, afterEval));
+    issues.push(...inspectBoardShape(next, ply + 1));
     moves.push({ ply: ply + 1, side: state.turn, move: usi(move), elapsed, beforeEval, afterEval });
     evals.push(afterEval);
     state = next;

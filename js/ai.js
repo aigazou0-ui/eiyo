@@ -275,6 +275,15 @@
     return !gives && pressure <= 0 && support < 4;
   }
 
+  function forbiddenEarlyEdgeBishop(state, move, side) {
+    if (!move || move.drop || !move.from || move.promote || state.history.length >= 72) return false;
+    const piece = state.board[move.from.r][move.from.c];
+    if (!piece || piece.type !== "B") return false;
+    if (move.to.c !== 0 && move.to.c !== 8) return false;
+    if (move.capture) return false;
+    return true;
+  }
+
   function allowsOpponentMateInOne(state, move) {
     if (!move) return false;
     const undo = window.ShogiBoard.makeMove(state, move);
@@ -287,7 +296,7 @@
   function preferNoImmediateMate(state, ordered, limit) {
     if (!ordered.length || state.history.length < 64) return ordered;
     const inCheck = window.ShogiRules.inCheck(state, state.turn);
-    if (!inCheck && ordered.length > 8) return ordered;
+    if (!inCheck && ordered.length > 8 && state.history.length < 70) return ordered;
     const checkLimit = Math.min(limit || 4, ordered.length);
     for (let i = 0; i < checkLimit; i += 1) {
       if (!allowsOpponentMateInOne(state, ordered[i].move)) {
@@ -434,9 +443,10 @@
   }
 
   function looseMinorPieceShapeRisk(state, move, side) {
-    if (!move || move.drop || !move.from || move.capture || move.promote || state.history.length > 64) return 0;
+    if (!move || move.drop || !move.from || move.promote || state.history.length > 64) return 0;
     const piece = movingPiece(state, move);
     if (!piece || !["B", "S"].includes(piece.type)) return 0;
+    if (move.capture && piece.type !== "B") return 0;
     const enemy = window.ShogiBoard.opponent(side);
     const enemyKing = findKing(state, enemy);
     const beforeDist = distance(move.from, enemyKing);
@@ -474,6 +484,7 @@
       if (state.history.length < 30 && advanced >= 3 && !defended) return 520;
     }
     if (piece.type === "B") {
+      if ((move.to.c === 0 || move.to.c === 8) && bishopMobility <= 7 && ownKingDist > 2 && pressure === 0) return 2600;
       if (bishopMobility <= 4 && ownKingDist > 2 && afterDist >= beforeDist - 1) return 980;
       if (support >= 4 && bishopMobility >= 6) return 0;
       if (advanced >= 3 && afterDist >= beforeDist && (!defended || attacked)) return 880;
@@ -1017,6 +1028,13 @@
       .sort((a, b) => (b.score - b.shapeRisk * 80) - (a.score - a.shapeRisk * 80));
   }
 
+  function lateSafeFastItems(state, items) {
+    if (state.history.length < 70 || !items.length || !allowsOpponentMateInOne(state, items[0].move)) return items;
+    const safe = items.slice(0, 8).find(item => !allowsOpponentMateInOne(state, item.move));
+    if (!safe) return items;
+    return [safe].concat(items.filter(item => moveKey(item.move) !== moveKey(safe.move)));
+  }
+
   function chooseMoveWithRandomness(state, level, options = {}) {
     const lv = normalizedLevel(level);
     const cfg = config(lv, options);
@@ -1045,7 +1063,7 @@
     }
 
     if (cfg.mobile && state.history.length < 34 && base.depth <= 1 && base.candidates.length) {
-      const fastItems = safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)));
+      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length))));
       const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
@@ -1064,7 +1082,7 @@
     }
 
     if (cfg.mobile && (state.history.length > 30 || base.nodes > 70) && base.depth <= 1) {
-      const fastItems = safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length)));
+      const fastItems = lateSafeFastItems(state, safeFastSelectionItems(state, base.candidates.slice(0, Math.max(3, base.candidates.length))));
       const candidates = fastItems.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
@@ -1128,6 +1146,11 @@
         selected = item;
         break;
       }
+    }
+
+    if (state.history.length >= 70 && allowsOpponentMateInOne(state, selected.move)) {
+      const safeLate = ranked.slice(0, 8).find(item => !allowsOpponentMateInOne(state, item.move));
+      if (safeLate) selected = Object.assign({}, safeLate, { weight: selected.weight || 1 });
     }
 
     const candidates = ranked.slice(0, Math.max(3, base.candidates.length)).map(item => {
@@ -1316,7 +1339,8 @@
       !isEarlyBishopHeadPawnPush(state, move, side) &&
       !forbiddenEarlyMajorDrop(state, move, side) &&
       !forbiddenEarlyKingExposure(state, move, side) &&
-      !forbiddenEarlyMajorAdvance(state, move, side)
+      !forbiddenEarlyMajorAdvance(state, move, side) &&
+      !forbiddenEarlyEdgeBishop(state, move, side)
     );
     if (!window.ShogiRules.inCheck(state, side) && state.history.length < 44) {
       const noKingExposure = candidateMoves.filter(move => {
@@ -1550,7 +1574,8 @@
     let moves = rawMoves.filter(move =>
       !forbiddenEarlyMajorDrop(state, move, state.turn) &&
       !forbiddenEarlyKingExposure(state, move, state.turn) &&
-      !forbiddenEarlyMajorAdvance(state, move, state.turn)
+      !forbiddenEarlyMajorAdvance(state, move, state.turn) &&
+      !forbiddenEarlyEdgeBishop(state, move, state.turn)
     );
     if (!moves.length) moves = rawMoves;
     if (!moves.length) return { bestMove: null, candidates: [], nodes: 0, depth: 0 };

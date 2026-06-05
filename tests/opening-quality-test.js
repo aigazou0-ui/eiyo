@@ -126,7 +126,8 @@ function hasCastleProgress(state, side) {
 }
 
 function looseMinorShapeIssue(state, move, side, piece, moveUsi) {
-  if (!piece || !["B", "S"].includes(piece.type) || move.capture || move.promote) return null;
+  if (!piece || !["B", "S"].includes(piece.type) || move.promote) return null;
+  if (move.capture && piece.type !== "B") return null;
   const ply = state.history.length;
   if (ply > 64) return null;
   const enemy = context.ShogiBoard.opponent(side);
@@ -160,6 +161,9 @@ function looseMinorShapeIssue(state, move, side, piece, moveUsi) {
   if (piece.type === "B" && bishopMobility <= 4 && ownKingDist > 2 && afterDist >= beforeDist - 1) {
     return { severity: 3, type: "stranded-bishop", text: `${sideName(side)} ${moveUsi}: bishop with poor diagonal scope` };
   }
+  if (piece.type === "B" && (move.to.c === 0 || move.to.c === 8) && bishopMobility <= 5 && ownKingDist > 2 && pressure === 0 && afterDist >= beforeDist - 2) {
+    return { severity: 4, type: "edge-stranded-bishop", text: `${sideName(side)} ${moveUsi}: bishop stranded on edge` };
+  }
   if (pressure > 0 || defended && !attacked) return null;
   if (piece.type === "S" && advanced >= 4 && afterDist >= beforeDist - 1) {
     return { severity: 3, type: "unsupported-silver-sortie", text: `${sideName(side)} ${moveUsi}: 働きの薄い銀進出` };
@@ -168,6 +172,52 @@ function looseMinorShapeIssue(state, move, side, piece, moveUsi) {
     return { severity: 3, type: "unsupported-bishop-wander", text: `${sideName(side)} ${moveUsi}: 働きの薄い角移動` };
   }
   return null;
+}
+
+function bishopMobility(state, square, side) {
+  let mobility = 0;
+  for (const [dr, dc] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+    let r = square.r + dr;
+    let c = square.c + dc;
+    while (context.ShogiBoard.inside(r, c)) {
+      const target = state.board[r][c];
+      if (!target) mobility += 1;
+      else {
+        if (target.owner !== side) mobility += 1;
+        break;
+      }
+      r += dr;
+      c += dc;
+    }
+  }
+  return mobility;
+}
+
+function boardShapeIssues(state, ply) {
+  if (ply > 64) return [];
+  const issues = [];
+  for (const side of ["b", "w"]) {
+    const enemyKing = kingSquare(state, context.ShogiBoard.opponent(side));
+    const ownKing = kingSquare(state, side);
+    for (let r = 0; r < 9; r += 1) {
+      for (let c = 0; c < 9; c += 1) {
+        const p = state.board[r][c];
+        if (!p || p.owner !== side || p.type !== "B" || p.promoted) continue;
+        const square = { r, c };
+        const mobility = bishopMobility(state, square, side);
+        const pressure = attacksKingZoneFrom(state, square, side, enemyKing);
+        if ((c === 0 || c === 8) && mobility <= 5 && pressure === 0 && distance(square, ownKing) > 2) {
+          issues.push({
+            ply,
+            severity: 4,
+            type: "edge-stranded-bishop-board",
+            text: `${sideName(side)} bishop is stranded on edge`
+          });
+        }
+      }
+    }
+  }
+  return issues;
 }
 
 function issueForMove(state, move) {
@@ -278,6 +328,7 @@ function runGame(gameIndex) {
     if (issue) issues.push(Object.assign({ ply: ply + 1 }, issue));
     moves.push({ ply: ply + 1, side: state.turn, move: usi(move), style: profile.openingStyle, elapsed });
     state = context.ShogiBoard.applyMove(state, cloneMove(move));
+    issues.push(...boardShapeIssues(state, ply + 1));
   }
   castleReached.b = castleReached.b || hasCastleProgress(state, "b");
   castleReached.w = castleReached.w || hasCastleProgress(state, "w");
