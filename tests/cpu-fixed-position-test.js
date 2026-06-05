@@ -327,6 +327,17 @@ function badPawnPushState() {
   return state;
 }
 
+function supportedCentralPushState() {
+  const state = emptyState("b", 24);
+  state.board[8][4] = piece("K", "b");
+  state.board[0][4] = piece("K", "w");
+  state.board[6][4] = piece("P", "b");
+  state.board[7][3] = piece("S", "b");
+  state.board[7][5] = piece("G", "b");
+  state.board[5][3] = piece("B", "b");
+  return state;
+}
+
 function badKingMoveState() {
   const state = emptyState("b", 20);
   state.board[7][4] = piece("K", "b");
@@ -618,6 +629,53 @@ function run() {
   {
     const state = bishopShuffleState();
     failures.push(assertTest("repetition-debug-no-progress", (debugForUsi(state, "7g8h").repetitionDebug || {}).classification === "bad", { moveUsi: "7g8h", debug: debugForUsi(state, "7g8h") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g"]);
+    failures.push(assertTest("realgame-label-unsupported-8d8e", hasReasonForMove(state, "8d8e", ["unsupportedAttackProbe"]), { moveUsi: "8d8e", debug: debugForUsi(state, "8d8e") }));
+    const decision = choose(state, { openingStyle: "static-rapid" });
+    failures.push(assertTest("realgame-avoid-unsupported-8d8e", !hasBadReason(decision.debug, ["unsupportedAttackProbe"]), decision));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "8d8e", "2g2f", "7c7d", "3i4h", "8a7c", "5i6i"]);
+    failures.push(assertTest("realgame-label-bad-pawn-8e8f", hasReasonForMove(state, "8e8f", ["openingPawnSacrifice", "badPawnPush", "loosePawnPush"]), { moveUsi: "8e8f", debug: debugForUsi(state, "8e8f") }));
+    const decision = choose(state, { openingStyle: "static-rapid" });
+    failures.push(assertTest("realgame-avoid-bad-pawn-8e8f", !hasBadReason(decision.debug, ["openingPawnSacrifice", "badPawnPush", "loosePawnPush"]), decision));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "8d8e", "2g2f", "7c7d", "3i4h", "8a7c", "5i6i", "8e8f", "6i7i", "6a5b"]);
+    failures.push(assertTest("realgame-label-no-follow-pawn-6g6f", hasReasonForMove(state, "6g6f", ["badPawnPush", "pawnPushHasNoFollowUp", "loosePawnPush"]), { moveUsi: "6g6f", debug: debugForUsi(state, "6g6f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "8d8e", "2g2f", "7c7d", "3i4h", "8a7c", "5i6i", "8e8f", "6i7i", "6a5b", "6g6f", "6c6d", "7i6h", "6b6c", "4i5h", "5c5d", "2f2e", "4c4d", "5h6g", "1c1d", "3g3f", "9c9d", "7g8f"]);
+    failures.push(assertTest("realgame-label-bad-central-pawn-6d6e", hasReasonForMove(state, "6d6e", ["openingPawnSacrifice", "badPawnPush", "loosePawnPush"]), { moveUsi: "6d6e", debug: debugForUsi(state, "6d6e") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g"]);
+    failures.push(assertTest("realgame-label-bad-central-pawn-5d5e", hasReasonForMove(state, "5d5e", ["openingPawnSacrifice", "badPawnPush", "loosePawnPush"]), { moveUsi: "5d5e", debug: debugForUsi(state, "5d5e") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h"]);
+    failures.push(assertTest("realgame-label-pawn-capture-sacrifice-5e5f", hasReasonForMove(state, "5e5f", ["openingPawnSacrifice", "badPawnPush"]), { moveUsi: "5e5f", debug: debugForUsi(state, "5e5f") }));
+  }
+
+  {
+    const state = stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h", "5e5f", "5g5f"]);
+    failures.push(assertTest("realgame-label-central-breakthrough-4d5e", hasReasonForMove(state, "4d5e", ["centralBreakthroughRisk", "unsupportedCentralPush", "centralAttackHasNoFollowUp"]), { moveUsi: "4d5e", debug: debugForUsi(state, "4d5e") }));
+    const decision = choose(state, { openingStyle: "ranging-mino" });
+    failures.push(assertTest("realgame-avoid-central-breakthrough-4d5e", !hasBadReason(decision.debug, ["centralBreakthroughRisk", "centralExchangeLosesMaterial"]), decision));
+  }
+
+  {
+    const state = supportedCentralPushState();
+    failures.push(assertTest("central-supported-push-no-risk", lacksReasonForMove(state, "5g5f", ["badPawnPush", "centralBreakthroughRisk", "unsupportedCentralPush"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+    failures.push(assertTest("central-supported-push-positive", hasPositiveReasonForMove(state, "5g5f", ["supportedCentralPush", "naturalCentralDevelopment", "goodPawnPush"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
   }
 
   const failed = failures.filter(Boolean);

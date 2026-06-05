@@ -958,7 +958,14 @@
       const piece = state.board[move.from.r][move.from.c];
       if (piece) {
         const advanced = advancedRank(side, move.to);
-        if (piece.type === "P" && !move.capture && advanced >= 4) risk += 360;
+        if (piece.type === "P") {
+          const pawnProfile = pawnPushProfile(state, move, side);
+          if (pawnProfile.classification === "bad") risk += 900;
+          if (pawnProfile.noFollowUp && pawnProfile.classification === "bad") risk += 420;
+          if (!move.capture && advanced >= 4) risk += 360;
+        }
+        risk += centralBreakthroughRisk(state, move, side) * 0.9;
+        risk += unsupportedAttackProbeRisk(state, move, side) * 0.65;
         if ((piece.type === "R" || piece.type === "B") && !move.capture && advanced >= 4 && state.history.length < 34) risk += 1300;
         if (move.promote && (piece.type === "R" || piece.type === "B") && !move.capture && state.history.length < 30) risk += 900;
         risk += looseMinorPieceShapeRisk(state, move, side);
@@ -1013,22 +1020,27 @@
     return Math.round(score);
   }
 
-  function centralBreakthroughRisk(state, move, side) {
-    if (!move || move.drop || !move.to || state.history.length < 18 || state.history.length > 70) return 0;
+  function centralBreakthroughProfile(state, move, side) {
+    const empty = { isCentralAdvance: false, classification: "none", positiveReasons: [], debugReasons: [] };
+    if (!move || move.drop || !move.to || state.history.length < 18 || state.history.length > 70) return empty;
     const piece = movingPiece(state, move);
-    if (!piece || piece.type === "K") return 0;
+    if (!piece || piece.type === "K") return empty;
     const centralFile = move.to.c === 4 || (move.from && move.from.c === 4);
-    if (!centralFile) return 0;
+    if (!centralFile) return empty;
     const advanced = advancedRank(side, move.to);
-    if (advanced < 3 && !move.capture && !move.promote) return 0;
+    if (advanced < 3 && !move.capture && !move.promote) return empty;
     const enemy = window.ShogiBoard.opponent(side);
     const enemyKing = findKing(state, enemy);
+    const ownKing = findKing(state, side);
+    const beforeKingAttack = ownKing ? window.ShogiRules.attacksSquare(state, enemy, ownKing) : false;
+    const exchange = exchangeAfterMove(state, move, side);
     const undo = window.ShogiBoard.makeMove(state, move);
     const defended = window.ShogiRules.attacksSquare(state, side, move.to);
     const attacked = window.ShogiRules.attacksSquare(state, enemy, move.to);
     const pressure = attacksKingZoneFrom(state, move.to, side, enemyKing);
     const support = localAttackSupport(state, move.to, side, enemyKing);
     const gives = window.ShogiRules.inCheck(state, enemy);
+    const afterKingAttack = ownKing ? window.ShogiRules.attacksSquare(state, enemy, ownKing) : false;
     let sameFilePower = 0;
     for (let r = 0; r < 9; r++) {
       const p = state.board[r][4];
@@ -1039,7 +1051,28 @@
       else if (p.type === "P") sameFilePower += 1;
     }
     window.ShogiBoard.undoMove(state, undo);
-    if (gives || pressure >= 2 || support >= 5 || sameFilePower >= 6) return 0;
+    const positiveReasons = [];
+    const debugReasons = [];
+    const hangs = attacked && !defended;
+    const exchangeLoses = exchange.see < -80 && !exchange.check && !exchange.mateThreat;
+    const opensCenterAgainstOwnKing = !beforeKingAttack && afterKingAttack && ownKing && distance(move.from, ownKing) <= 4;
+    const hasFollowUp = gives || pressure > 0 || support >= 3 || sameFilePower >= 4 || move.capture || move.promote || exchange.see >= 40;
+    if (support >= 3 || sameFilePower >= 4 || defended) positiveReasons.push("supportedCentralPush");
+    if (pressure > 0 || gives) positiveReasons.push("centralPressureCreated");
+    if (exchange.see >= -40) positiveReasons.push("centralExchangeOk");
+    if (hasFollowUp) positiveReasons.push("centralAttackHasFollowUp");
+    if (piece.type === "P" && support >= 2 && exchange.see >= -40) positiveReasons.push("naturalCentralDevelopment");
+    if (support <= 1 && sameFilePower <= 2) debugReasons.push("unsupportedCentralPush");
+    if (hangs) debugReasons.push("centralPieceHangs");
+    if (exchangeLoses) debugReasons.push("centralExchangeLosesMaterial");
+    if (!hasFollowUp) debugReasons.push("centralAttackHasNoFollowUp");
+    if (opensCenterAgainstOwnKing) debugReasons.push("opensCenterAgainstOwnKing");
+    let classification = "neutral";
+    if ((hangs && pressure <= 1 && exchange.see <= 40) || exchangeLoses || opensCenterAgainstOwnKing || (!hasFollowUp && support <= 2)) {
+      classification = "bad";
+    } else if (gives || pressure >= 2 || support >= 5 || sameFilePower >= 6 || (hasFollowUp && exchange.see >= -40 && !opensCenterAgainstOwnKing)) {
+      classification = "good";
+    }
     let risk = 0;
     if (piece.type === "P") risk += move.capture ? 180 : 320;
     else if (piece.type === "S" || piece.type === "G") risk += 240;
@@ -1048,7 +1081,33 @@
     else if (attacked > defended) risk += 180;
     if (sameFilePower <= 2) risk += piece.type === "R" || piece.type === "B" ? 720 : 260;
     if (support <= 1) risk += piece.type === "R" || piece.type === "B" ? 520 : 220;
-    return risk;
+    if (exchangeLoses) risk += 560 + Math.abs(exchange.see);
+    if (opensCenterAgainstOwnKing) risk += 480;
+    if (!hasFollowUp) risk += 260;
+    if (classification === "good") risk = 0;
+    return {
+      isCentralAdvance: true,
+      classification,
+      pieceType: piece.type,
+      defended: !!defended,
+      attacked: !!attacked,
+      support,
+      sameFilePower,
+      pressure,
+      exchangeSee: exchange.see,
+      centralPieceHangs: !!hangs,
+      centralExchangeLosesMaterial: !!exchangeLoses,
+      opensCenterAgainstOwnKing,
+      hasFollowUp,
+      positiveReasons,
+      debugReasons,
+      risk: Math.max(0, Math.round(risk))
+    };
+  }
+
+  function centralBreakthroughRisk(state, move, side) {
+    const profile = centralBreakthroughProfile(state, move, side);
+    return profile.classification === "bad" ? profile.risk : 0;
   }
 
   function majorSacrificeRisk(state, move, side, exchange) {
@@ -1505,6 +1564,7 @@
       debugReasons: debugReasons(state, item.move, state.turn),
       silverDebug: silverDebug(state, item.move, state.turn),
       pawnPushDebug: pawnPushDebug(state, item.move, state.turn),
+      centralBreakthroughDebug: centralBreakthroughDebug(state, item.move, state.turn),
       kingMoveDebug: kingMoveDebug(state, item.move, state.turn),
       repetitionDebug: repetitionDebug(state, item.move),
       reason: ""
@@ -1557,7 +1617,13 @@
     add(noFollowUpCheckRisk(state, move, side, exchange) > 0, "noFollowUpCheck");
     add(unsupportedAttackProbeRisk(state, move, side) > 0, "unsupportedAttackProbe");
     add(looseMinorPieceShapeRisk(state, move, side) > 0, "looseMinorShape");
-    add(centralBreakthroughRisk(state, move, side) > 0, "centralBreakthroughRisk");
+    const centralProfile = centralBreakthroughProfile(state, move, side);
+    add(centralProfile.classification === "bad", "centralBreakthroughRisk");
+    add(centralProfile.debugReasons && centralProfile.debugReasons.includes("unsupportedCentralPush"), "unsupportedCentralPush");
+    add(centralProfile.centralPieceHangs, "centralPieceHangs");
+    add(centralProfile.centralExchangeLosesMaterial, "centralExchangeLosesMaterial");
+    add(centralProfile.debugReasons && centralProfile.debugReasons.includes("centralAttackHasNoFollowUp"), "centralAttackHasNoFollowUp");
+    add(centralProfile.opensCenterAgainstOwnKing, "opensCenterAgainstOwnKing");
     add(majorSacrificeRisk(state, move, side, exchange) > 0, "majorSacrificeRisk");
     add(aimlessEarlyMajorCaptureRisk(state, move, side, exchange) > 0, "aimlessEarlyMajorCapture");
     add(quietMajorPromotionPenalty(state, move, side) > 0, "quietMajorPromotion");
@@ -1580,6 +1646,8 @@
     }
     const pawn = pawnPushProfile(state, move, side);
     if (pawn.isPawnPush) for (const reason of pawn.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    const central = centralBreakthroughProfile(state, move, side);
+    if (central.isCentralAdvance) for (const reason of central.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
     const king = kingMoveProfile(state, move, side);
     if (king.isKingMove) for (const reason of king.positiveReasons) if (!reasons.includes(reason)) reasons.push(reason);
     const repetition = repetitionProfile(state, move);
@@ -1598,6 +1666,10 @@
     if (pawn.isPawnPush) {
       if (pawn.classification === "neutral") reasons.push("neutralPawnPush");
       for (const reason of pawn.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
+    }
+    const central = centralBreakthroughProfile(state, move, side);
+    if (central.isCentralAdvance) {
+      for (const reason of central.debugReasons) if (!reasons.includes(reason)) reasons.push(reason);
     }
     const king = kingMoveProfile(state, move, side);
     if (king.isKingMove) {
@@ -1637,10 +1709,35 @@
       weakensKing: profile.weakensKing,
       opensEnemyLine: profile.opensEnemyLine,
       noFollowUp: profile.noFollowUp,
+      onePawnLoss: profile.classification === "bad" && profile.attacked && !profile.defended,
+      canRecapture: profile.defended || profile.exchangeSee >= -40,
+      pawnExchangeAim: profile.positiveReasons.includes("pawnExchangeAim"),
+      opensEnemyLineAgainstKing: profile.opensEnemyLine,
+      followUp: !profile.noFollowUp,
       pressure: profile.pressure,
       attacksEnemyPiece: profile.attacksEnemyPiece,
       supportsSilver: profile.supportsSilver,
       exchangeSee: profile.exchangeSee
+    };
+  }
+
+  function centralBreakthroughDebug(state, move, side) {
+    const profile = centralBreakthroughProfile(state, move, side);
+    if (!profile.isCentralAdvance) return null;
+    return {
+      classification: profile.classification,
+      supported: profile.support >= 3 || profile.sameFilePower >= 4 || profile.defended,
+      support: profile.support,
+      sameFilePower: profile.sameFilePower,
+      exchangeSee: profile.exchangeSee,
+      centralPieceHangs: profile.centralPieceHangs,
+      pressure: profile.pressure,
+      weakensOwnKing: profile.opensCenterAgainstOwnKing,
+      opensCenterAgainstOwnKing: profile.opensCenterAgainstOwnKing,
+      hasFollowUp: profile.hasFollowUp,
+      badMoveReasons: profile.debugReasons,
+      positiveReasons: profile.positiveReasons,
+      debugReasons: profile.debugReasons
     };
   }
 
@@ -2350,7 +2447,19 @@
       ? window.ShogiOpening.candidates(state, moves, { style: profile && profile.openingStyle })
       : [];
     if (level >= 1 && bookMoves.length && !cfg.deepThinking && cfg.mobile && state.history.length < 28) {
-      const candidates = bookMoves.slice(0, 3).map((item, index) => Object.assign({}, item, {
+      const scoredBook = bookMoves.slice(0, 8)
+        .map(item => {
+          const risk = fastShapeRisk(state, item.move, state.turn);
+          return Object.assign({}, item, {
+            rawScore: item.score,
+            risk,
+            score: item.score - risk * 1100 + cheapOrderingScore(state, item.move, null) * 0.1
+          });
+        })
+        .sort((a, b) => b.score - a.score);
+      const safeBook = scoredBook.filter(item => item.risk < 760 + level * 120);
+      const selectedBook = (safeBook.length ? safeBook : scoredBook).slice(0, 3);
+      const candidates = selectedBook.map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
         depth: 1,
@@ -2358,8 +2467,8 @@
         pv: [item.move],
         debug: {
           aiScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
-          rawScore: Math.max(-9999, Math.min(9999, Math.round(item.score || 0))),
-          risk: 0,
+          rawScore: Math.max(-9999, Math.min(9999, Math.round(Number.isFinite(item.rawScore) ? item.rawScore : item.score || 0))),
+          risk: Math.round(item.risk || 0),
           reason: "opening-book-fast"
         }
       }));

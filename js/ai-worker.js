@@ -7,7 +7,7 @@ importScripts(
   "evaluation.js?v=85",
   "opening-book.js?v=1",
   "opening.js?v=86",
-  "ai.js?v=105"
+  "ai.js?v=106"
 );
 
 self.onmessage = event => {
@@ -40,5 +40,3 @@ self.onmessage = event => {
     });
   }
 };
-
-
