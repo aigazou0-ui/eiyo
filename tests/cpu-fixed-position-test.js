@@ -415,6 +415,22 @@ function centralSupportedMinorState() {
   return state;
 }
 
+function residualGameOneBeforeSilverSortie() {
+  return stateFromMoves(["7g7f", "3c3d", "6i7h", "8c8d", "7i6h", "7a6b", "6h7g", "7c7d", "2g2f", "8a7c", "3i4h", "6a5b", "5i6i", "5c5d", "6i7i", "1c1d", "6g6f", "9c9d", "4i5h", "4c4d", "5h6g", "6c6d"]);
+}
+
+function residualGameTwoBeforeKingWander() {
+  return stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g"]);
+}
+
+function residualGameTwoBeforeCentralSilver() {
+  return stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h", "5e5f", "5g5f"]);
+}
+
+function residualGameTwoBeforeCentralPawnCapture() {
+  return stateFromMoves(["7g7f", "3c3d", "6g6f", "3a4b", "7i6h", "5a6b", "6h6g", "6b7b", "3i4h", "4a3b", "6i7h", "1c1d", "5i6i", "9c9d", "6i7i", "5c5d", "7i6h", "4b5c", "5g5f", "5c4d", "4h5g", "5d5e", "4i5h", "5e5f", "5g5f", "4d5e", "2g2f", "7c7d"]);
+}
+
 function run() {
   const failures = [];
 
@@ -864,6 +880,90 @@ function run() {
     const state = supportedSilverAttackState();
     failures.push(assertTest("minor-supported-attack-not-loose", lacksReasonForMove(state, "5g5f", ["looseMinorShape", "minorHasNoRole", "centralPieceHangs"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
     failures.push(assertTest("minor-supported-attack-positive", hasPositiveReasonForMove(state, "5g5f", ["naturalMinorDevelopment", "minorSupportsAttack"]), { moveUsi: "5g5f", debug: debugForUsi(state, "5g5f") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-7g8f-bad-silver-sortie",
+      description: "残ログ1: 7g8f。囲いから銀が単独で離れ、支えと継続が弱い悪い銀進出。",
+      moveNumber: 27,
+      previousMoves: ["4c4d", "6g6f", "1c1d", "5h6g", "9c9d"],
+      badMoves: ["7g8f"],
+      expectedBadReasons: ["unsupportedSilverAdvance", "silverLeavesCastle", "badSilverOverextension", "silverHasNoFollowUp"],
+      goodMoveHints: ["2f2e", "castleDevelopment", "defendFloatingPiece"]
+    };
+    const state = residualGameOneBeforeSilverSortie();
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "7g8f", meta.expectedBadReasons), { moveUsi: "7g8f", meta, debug: debugForUsi(state, "7g8f") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-8d8e-bad-pawn-push",
+      description: "残ログ2: 8d8e。銀が出た直後に支えの弱い歩を突き、攻めの継続も薄い。",
+      moveNumber: 28,
+      previousMoves: ["6g6f", "1c1d", "5h6g", "9c9d", "7g8f"],
+      badMoves: ["8d8e"],
+      expectedBadReasons: ["badPawnPush", "loosePawnPush"],
+      goodMoveHints: ["castleDevelopment", "defendFloatingPiece", "avoidStaticExchange"]
+    };
+    const state = applyUsi(residualGameOneBeforeSilverSortie(), "7g8f");
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "8d8e", meta.expectedBadReasons), { moveUsi: "8d8e", meta, debug: debugForUsi(state, "8d8e") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-6g6f-bad-pawn-push",
+      description: "残ログ3: 6g6f。序盤早々に支えと継続が弱い歩突き。",
+      moveNumber: 3,
+      previousMoves: ["7g7f", "3c3d"],
+      badMoves: ["6g6f"],
+      expectedBadReasons: ["badPawnPush", "pawnPushHasNoFollowUp", "loosePawnPush"],
+      goodMoveHints: ["2g2f", "6i7h", "7i6h"]
+    };
+    const state = stateFromMoves(["7g7f", "3c3d"]);
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "6g6f", meta.expectedBadReasons), { moveUsi: "6g6f", meta, debug: debugForUsi(state, "6g6f") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-6b7b-king-wander",
+      description: "残ログ4: 6b7b。囲い方向でも金銀接近でもなく、逃げ道が減る玉移動。",
+      moveNumber: 8,
+      previousMoves: ["6g6f", "3a4b", "7i6h", "5a6b", "6h6g"],
+      badMoves: ["6b7b"],
+      expectedBadReasons: ["kingWander", "badKingMove", "kingReducesEscapeRoutes"],
+      goodMoveHints: ["4a3b", "6a7b", "castleDevelopment"]
+    };
+    const state = residualGameTwoBeforeKingWander();
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "6b7b", meta.expectedBadReasons), { moveUsi: "6b7b", meta, debug: debugForUsi(state, "6b7b") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-4d5e-bad-central-silver",
+      description: "残ログ5: 4d5e。銀が中央へ出るが、支えが薄く歩で追われ、清算後も悪い。",
+      moveNumber: 28,
+      previousMoves: ["4i5h", "5e5f", "5g5f", "4d5e", "2g2f"],
+      badMoves: ["4d5e"],
+      expectedBadReasons: ["unsupportedSilverAdvance", "badSilverOverextension", "silverIsHangingAfterAdvance", "centralPieceHangs"],
+      goodMoveHints: ["castleDevelopment", "defendFloatingPiece", "avoidStaticExchange"]
+    };
+    const state = residualGameTwoBeforeCentralSilver();
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "4d5e", meta.expectedBadReasons), { moveUsi: "4d5e", meta, debug: debugForUsi(state, "4d5e") }));
+  }
+
+  {
+    const meta = {
+      id: "residual-5f5e-central-piece-hangs",
+      description: "残ログ6: 5f5e。中央の歩が取っても支えがなく、次に浮く形。",
+      moveNumber: 29,
+      previousMoves: ["5e5f", "5g5f", "4d5e", "2g2f", "7c7d"],
+      badMoves: ["5f5e"],
+      expectedBadReasons: ["centralPieceHangs", "centralPieceNoSupport"],
+      goodMoveHints: ["8i7g", "6f6e", "defendFloatingPiece"]
+    };
+    const state = residualGameTwoBeforeCentralPawnCapture();
+    failures.push(assertTest(meta.id + "-reasons", hasReasonForMove(state, "5f5e", meta.expectedBadReasons), { moveUsi: "5f5e", meta, debug: debugForUsi(state, "5f5e") }));
   }
 
   const failed = failures.filter(Boolean);

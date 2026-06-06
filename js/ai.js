@@ -1840,6 +1840,7 @@
     }
     const pawnProfile = piece && piece.type === "P" ? pawnPushProfile(state, move, side) : null;
     if (pawnProfile && pawnProfile.classification === "bad") risk += 360 + level * 55;
+    if (pawnProfile && pawnProfile.classification === "bad" && state.history.length < 60 && pawnProfile.noFollowUp) risk += 720 + level * 95;
     if (pawnProfile && (pawnProfile.weakensKing || pawnProfile.opensEnemyLine)) risk += 520 + level * 70;
     if (isEarlyBishopHeadPawnPush(state, move, side)) {
       risk += 9000 + level * 420;
@@ -1861,6 +1862,7 @@
     if (silverProfile.classification === "bad") risk += (520 + level * 70);
     if (silverProfile.hanging) risk += 680 + level * 80;
     if (silverProfile.pawnChase && silverProfile.classification === "bad") risk += 360 + level * 55;
+    if (silverProfile.isSilverMove && silverProfile.classification === "bad" && !silverProfile.followUp) risk += 900 + level * 120;
     risk += majorOverextensionRisk(state, move, side, "R") * (0.85 + level * 0.08);
     risk += majorOverextensionRisk(state, move, side, "B") * (0.85 + level * 0.08);
     risk += weakKingShapeRisk(state, move, side) * (0.45 + level * 0.04);
@@ -1876,9 +1878,14 @@
     risk += kingWanderPenalty(state, move, side) * (0.8 + level * 0.05);
     const kingProfile = piece && piece.type === "K" ? kingMoveProfile(state, move, side) : null;
     if (kingProfile && kingProfile.classification === "bad") risk += 520 + level * 80;
+    if (kingProfile && kingProfile.classification === "bad" && kingProfile.kingSafetyDelta < 0) risk += 900 + level * 130;
+    if (kingProfile && kingProfile.debugReasons && kingProfile.debugReasons.includes("kingMoveNoPurpose")) risk += 520 + level * 70;
     risk += earlyMajorPieceSortiePenalty(state, move, side) * (0.8 + level * 0.06);
     const majorProfile = majorSortieProfile(state, move, side);
     if (majorProfile.classification === "bad") risk += 360 + level * 55;
+    const centralProfile = centralBreakthroughProfile(state, move, side);
+    if (centralProfile.centralPieceHangs && !centralProfile.defended) risk += 820 + level * 115;
+    if (centralProfile.debugReasons && centralProfile.debugReasons.includes("centralAttackHasNoFollowUp")) risk += 420 + level * 65;
     risk += quietMajorPromotionPenalty(state, move, side) * (0.9 + level * 0.08);
     const shuffleRisk = repetitionShuffleRisk(state, move);
     risk += shuffleRisk * (0.7 + level * 0.06);
@@ -1947,13 +1954,23 @@
     const cfg = config(level, options);
     const exchange = exchangeAfterMove(state, item.move, state.turn);
     const risk = tacticalRisk(state, item.move, state.turn, level, cfg);
+    const reasons = badMoveReasons(state, item.move, state.turn, level, cfg, exchange);
+    const safety = item.safety || badReasonSafetyPenalty(state, item.move, state.turn, level, cfg, reasons, exchange);
     const displayScore = Math.max(-9999, Math.min(9999, Math.round(item.score || 0)));
     const rawDisplayScore = Math.max(-9999, Math.min(9999, Math.round(Number.isFinite(item.rawScore) ? item.rawScore : item.score || 0)));
     const debug = Object.assign({}, exchange, {
       aiScore: displayScore,
       rawScore: rawDisplayScore,
       risk: Math.round(risk),
-      badMoveReasons: badMoveReasons(state, item.move, state.turn, level, cfg, exchange),
+      badMoveReasons: reasons,
+      rawEval: Math.round(Number.isFinite(item.rawScore) ? item.rawScore : item.score || 0),
+      riskPenalty: Math.round(risk),
+      finalEval: Math.round(item.score || 0),
+      badReasonPenaltyBreakdown: safety.breakdown,
+      wasDemotedBySafetyFilter: !!safety.wasDemotedBySafetyFilter,
+      safetyFilterReason: safety.safetyFilterReason,
+      candidateRankBefore: item.candidateRankBefore ?? null,
+      candidateRankAfter: item.candidateRankAfter ?? null,
       positiveReasons: positiveReasons(state, item.move, state.turn),
       debugReasons: debugReasons(state, item.move, state.turn),
       silverDebug: silverDebug(state, item.move, state.turn),
@@ -2059,6 +2076,85 @@
     add(exchange && exchange.see < -80 && !exchange.check && !exchange.mateThreat, "badStaticExchange");
     add(allowsOpponentMateInOne(state, move), "allowsOpponentMateInOne");
     return reasons;
+  }
+
+  const SAFETY_REASON_WEIGHTS = {
+    badSilverOverextension: 180000,
+    unsupportedSilverAdvance: 120000,
+    silverHasNoFollowUp: 110000,
+    silverIsHangingAfterAdvance: 170000,
+    badPawnPush: 145000,
+    loosePawnPush: 120000,
+    openingPawnSacrifice: 165000,
+    pawnPushHasNoFollowUp: 120000,
+    unsupportedPawnProbe: 115000,
+    kingWander: 185000,
+    badKingMove: 170000,
+    kingMoveNoPurpose: 120000,
+    centralPieceHangs: 155000,
+    centralPieceNoSupport: 135000,
+    centralPieceNoFollowUp: 115000,
+    badStaticExchange: 285000,
+    hangingAfterMove: 230000
+  };
+
+  function safetyPenaltyException(state, move, side, exchange) {
+    if (!move) return true;
+    if (window.ShogiRules.inCheck(state, side)) return true;
+    if (exchange && exchange.mateThreat) return true;
+    if (exchange && exchange.check && exchange.see >= 0) return true;
+    if (exchange && (exchange.captureGain >= 700 || exchange.netMaterial >= 520 || exchange.see >= 520)) return true;
+    return false;
+  }
+
+  function badReasonSafetyPenalty(state, move, side, level, cfg, reasons, exchange) {
+    const result = {
+      penalty: 0,
+      breakdown: [],
+      wasDemotedBySafetyFilter: false,
+      safetyFilterReason: ""
+    };
+    if (!Array.isArray(reasons) || !reasons.length || safetyPenaltyException(state, move, side, exchange)) return result;
+    const scale = 0.42 + Math.max(1, Math.min(10, level)) * 0.13;
+    for (const reason of reasons) {
+      const base = SAFETY_REASON_WEIGHTS[reason] || 0;
+      if (!base) continue;
+      const value = Math.round(base * scale);
+      result.penalty += value;
+      result.breakdown.push({ reason, penalty: value });
+    }
+    const weightedCount = result.breakdown.length;
+    if (weightedCount >= 2) {
+      const synergy = Math.round((weightedCount - 1) * 90000 * scale);
+      result.penalty += synergy;
+      result.breakdown.push({ reason: "multipleBadMoveReasons", penalty: synergy });
+    }
+    const piece = movingPiece(state, move);
+    if (piece && piece.type === "S" && reasons.some(reason => ["badSilverOverextension", "unsupportedSilverAdvance", "silverHasNoFollowUp", "silverIsHangingAfterAdvance", "centralPieceHangs", "unsupportedAttackProbe"].includes(reason))) {
+      const extra = Math.round((state.history.length < 60 ? 170000 : 95000) * scale);
+      result.penalty += extra;
+      result.breakdown.push({ reason: "silverSafetyDemotion", penalty: extra });
+    }
+    if (piece && piece.type === "P" && state.history.length < 60 && reasons.some(reason => ["badPawnPush", "loosePawnPush", "openingPawnSacrifice", "pawnPushHasNoFollowUp", "unsupportedPawnProbe"].includes(reason))) {
+      const extra = Math.round(150000 * scale);
+      result.penalty += extra;
+      result.breakdown.push({ reason: "earlyPawnSafetyDemotion", penalty: extra });
+    }
+    if (piece && piece.type === "K" && reasons.some(reason => ["kingWander", "badKingMove", "kingMoveNoPurpose", "kingLeavesDefense"].includes(reason))) {
+      const king = kingMoveProfile(state, move, side);
+      const extra = Math.round((king.kingSafetyDelta < 0 ? 210000 : 130000) * scale);
+      result.penalty += extra;
+      result.breakdown.push({ reason: "kingSafetyDemotion", penalty: extra });
+    }
+    if (reasons.includes("centralPieceHangs") && reasons.includes("centralPieceNoSupport")) {
+      const extra = Math.round(150000 * scale);
+      result.penalty += extra;
+      result.breakdown.push({ reason: "centralHangingDemotion", penalty: extra });
+    }
+    result.penalty = Math.round(result.penalty);
+    result.wasDemotedBySafetyFilter = result.penalty > 0;
+    result.safetyFilterReason = result.breakdown.map(item => item.reason).join(",");
+    return result;
   }
 
   function positiveReasons(state, move, side) {
@@ -2298,13 +2394,21 @@
   }
 
   function safeFastSelectionItems(state, items, level, cfg) {
-    const annotated = (items || []).map(item => {
+    const annotated = (items || []).map((item, index) => {
       const shapeRisk = looseMinorPieceShapeRisk(state, item.move, state.turn) +
         (leavesBadEdgeBishopBoard(state, item.move, state.turn) ? 9000 : 0);
+      const exchange = exchangeAfterMove(state, item.move, state.turn);
+      const reasons = badMoveReasons(state, item.move, state.turn, level, cfg, exchange);
+      const safety = badReasonSafetyPenalty(state, item.move, state.turn, level, cfg, reasons, exchange);
+      const rawScore = Number.isFinite(item.rawScore) ? item.rawScore : item.score || 0;
       return Object.assign({}, item, {
+        rawScore,
+        score: rawScore - safety.penalty,
         shapeRisk,
         fastRisk: fastShapeRisk(state, item.move, state.turn) + shapeRisk,
-        badMoveReasons: []
+        badMoveReasons: reasons,
+        safety,
+        candidateRankBefore: index + 1
       });
     });
     const severeRisk = reasons => {
@@ -2319,7 +2423,8 @@
     const safe = annotated.filter(item => item.shapeRisk < 700 && severeRisk(item.badMoveReasons) <= 0);
     return (safe.length ? safe : annotated)
       .sort((a, b) => (b.score - b.shapeRisk * 80 - b.fastRisk - severeRisk(b.badMoveReasons)) -
-        (a.score - a.shapeRisk * 80 - a.fastRisk - severeRisk(a.badMoveReasons)));
+        (a.score - a.shapeRisk * 80 - a.fastRisk - severeRisk(a.badMoveReasons)))
+      .map((item, index) => Object.assign({}, item, { candidateRankAfter: index + 1 }));
   }
 
   function lateSafeFastItems(state, items) {
@@ -2338,7 +2443,7 @@
     const phase = phaseOf(state);
     const scale = (RANDOMNESS_SCALE[randomness] ?? 1) * (PERSONALITY_SCALE[personality] ?? 1);
 
-    if (cfg.mobile && phase === "opening" && base.candidates.some(item => item.book)) {
+    if (false && cfg.mobile && phase === "opening" && base.candidates.some(item => item.book)) {
       const candidates = base.candidates.slice(0, Math.max(3, base.candidates.length)).map((item, index) => Object.assign({}, item, {
         selected: index === 0,
         weight: index === 0 ? 1 : 0,
@@ -2395,19 +2500,26 @@
     }
 
     const ranked = base.candidates
-      .map(item => {
+      .map((item, index) => {
         const risk = tacticalRisk(state, item.move, state.turn, lv, cfg);
         const shallowScore = shallowRank(state, item.move, lv, cfg);
+        const exchange = exchangeAfterMove(state, item.move, state.turn);
+        const reasons = badMoveReasons(state, item.move, state.turn, lv, cfg, exchange);
+        const safety = badReasonSafetyPenalty(state, item.move, state.turn, lv, cfg, reasons, exchange);
         const comparableScore = item.book
           ? (phase === "opening" ? 220 + Math.max(-35, Math.min(35, shallowScore)) : shallowScore + 90)
           : item.score;
         return Object.assign({}, item, {
           rawScore: item.score,
-          score: comparableScore + personalityBonus(state, item.move, personality) - risk * Math.max(0, cfg.danger - 0.55) * 0.22,
-          risk
+          score: comparableScore + personalityBonus(state, item.move, personality) - risk * Math.max(0, cfg.danger - 0.55) * 0.22 - safety.penalty,
+          risk,
+          safety,
+          badMoveReasons: reasons,
+          candidateRankBefore: index + 1
         });
       })
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => b.score - a.score)
+      .map((item, index) => Object.assign({}, item, { candidateRankAfter: index + 1 }));
 
     if (!ranked.length) return Object.assign({}, base, { selection: null });
 

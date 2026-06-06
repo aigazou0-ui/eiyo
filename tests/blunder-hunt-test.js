@@ -173,11 +173,22 @@ function badLogEntry(gameIndex, state, result, move, moveRecord, recentMoves) {
   if (!reasons.length) return null;
   const next = context.ShogiBoard.applyMove(state, cloneMove(move));
   const breakdown = context.ShogiEvaluation.scoreBreakdown(next, state.turn);
+  const selectedCandidate = (result.candidates || []).find(item => moveKey(item.move) === moveKey(move)) || {};
+  const selectedDebug = selectedCandidate.debug || {};
   const candidates = (result.candidates || []).slice(0, 3).map(item => {
     const candidateDebug = context.ShogiAI.debugMove(state, item.move, LEVEL, { mobile: true }) || {};
+    const resultDebug = item.debug || {};
     return {
       move: usi(item.move),
       score: Math.round(item.score || 0),
+      rawEval: Math.round(Number.isFinite(item.rawScore) ? item.rawScore : item.score || 0),
+      riskPenalty: resultDebug.riskPenalty ?? candidateDebug.risk,
+      finalEval: resultDebug.finalEval ?? Math.round(item.score || 0),
+      badReasonPenaltyBreakdown: resultDebug.badReasonPenaltyBreakdown || (item.safety && item.safety.breakdown) || [],
+      wasDemotedBySafetyFilter: !!(resultDebug.wasDemotedBySafetyFilter || (item.safety && item.safety.wasDemotedBySafetyFilter)),
+      safetyFilterReason: resultDebug.safetyFilterReason || (item.safety && item.safety.safetyFilterReason) || "",
+      candidateRankBefore: resultDebug.candidateRankBefore ?? item.candidateRankBefore ?? null,
+      candidateRankAfter: resultDebug.candidateRankAfter ?? item.candidateRankAfter ?? null,
       badMoveReasons: candidateDebug.badMoveReasons || []
     };
   });
@@ -195,6 +206,14 @@ function badLogEntry(gameIndex, state, result, move, moveRecord, recentMoves) {
     selectedMove: usi(move),
     selectedMoveObject: serializableMove(move),
     evaluationScore: debug.evaluationScore,
+    rawEval: selectedDebug.rawEval ?? Math.round(Number.isFinite(selectedCandidate.rawScore) ? selectedCandidate.rawScore : selectedCandidate.score || 0),
+    riskPenalty: selectedDebug.riskPenalty ?? debug.risk,
+    finalEval: selectedDebug.finalEval ?? Math.round(selectedCandidate.score || 0),
+    badReasonPenaltyBreakdown: selectedDebug.badReasonPenaltyBreakdown || (selectedCandidate.safety && selectedCandidate.safety.breakdown) || [],
+    wasDemotedBySafetyFilter: !!(selectedDebug.wasDemotedBySafetyFilter || (selectedCandidate.safety && selectedCandidate.safety.wasDemotedBySafetyFilter)),
+    safetyFilterReason: selectedDebug.safetyFilterReason || (selectedCandidate.safety && selectedCandidate.safety.safetyFilterReason) || "",
+    candidateRankBefore: selectedDebug.candidateRankBefore ?? selectedCandidate.candidateRankBefore ?? null,
+    candidateRankAfter: selectedDebug.candidateRankAfter ?? selectedCandidate.candidateRankAfter ?? null,
     scoreBreakdown: breakdown,
     topCandidates: candidates,
     elapsedMs: moveRecord ? moveRecord.elapsed : undefined
